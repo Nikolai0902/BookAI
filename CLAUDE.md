@@ -30,7 +30,9 @@ mvn clean compile
 The package layout under `src/main/java/io/book/ai/` follows a layered structure:
 
 - `controller/` — REST endpoints (`@RestController`)
-- `handler/` — Exception/error handlers (`@ControllerAdvice`)
+- `handler/` — business logic layer
+- `repository/` — data access layer (e.g., Spring Data repositories)
+- `repository/entity/` — JPA entities
 - `api/` — DTOs and API model classes
 
 **Dependencies in use:**
