@@ -1,6 +1,7 @@
 package io.book.ai.handler;
 
 import io.book.ai.api.LlmAskResponse;
+import io.book.ai.api.LlmCompareResponse;
 import io.book.ai.dto.AnthropicRequest;
 import io.book.ai.dto.AnthropicResponse;
 import io.book.ai.dto.Content;
@@ -32,19 +33,39 @@ public class LlmHandler {
     }
 
     public LlmAskResponse ask(String prompt) {
-        var request = new AnthropicRequest(model, 300, List.of(new Message("user", prompt)));
+        var request = new AnthropicRequest(model, 300, null, null, List.of(new Message("user", prompt)));
+        return new LlmAskResponse(callApi(request));
+    }
 
+    public LlmCompareResponse compare(String prompt) {
+        var freeRequest = new AnthropicRequest(model, 300, null, null, List.of(new Message("user", prompt)));
+
+        String systemPrompt = """
+                Отвечай строго в формате JSON. Используй такую структуру:
+                {"items": [{"rank": 1, "name": "...", "description": "..."}]}
+                Не добавляй ничего вне JSON объекта.
+                """;
+        var controlledRequest = new AnthropicRequest(
+                model,
+                150,
+                systemPrompt,
+                List.of("СТОП"),
+                List.of(new Message("user", prompt))
+        );
+
+        return new LlmCompareResponse(callApi(freeRequest), callApi(controlledRequest));
+    }
+
+    private String callApi(AnthropicRequest request) {
         var response = restClient.post()
                 .body(request)
                 .retrieve()
                 .body(AnthropicResponse.class);
 
-        String text = response.content().stream()
+        return response.content().stream()
                 .filter(c -> "text".equals(c.type()))
                 .findFirst()
                 .map(Content::text)
                 .orElse("");
-
-        return new LlmAskResponse(text);
     }
 }

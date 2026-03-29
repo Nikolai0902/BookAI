@@ -2,6 +2,7 @@ package io.book.ai.controller;
 
 import io.book.ai.api.LlmAskRequest;
 import io.book.ai.api.LlmAskResponse;
+import io.book.ai.api.LlmCompareResponse;
 import io.book.ai.handler.LlmHandler;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,11 @@ public class BookAiController {
     @PostMapping("/ask")
     public LlmAskResponse ask(@Valid @RequestBody LlmAskRequest request) {
         return llmHandler.ask(request.prompt());
+    }
+
+    @PostMapping("/compare")
+    public LlmCompareResponse compare(@Valid @RequestBody LlmAskRequest request) {
+        return llmHandler.compare(request.prompt());
     }
 
 }
