@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/useAppStore'
 import FilterSelector from './FilterSelector'
 import ReasonStrategy from './ReasonStrategy'
+import TemperatureInput from './TemperatureInput'
 import ModelInfo from './ModelInfo'
 import StatsPanel from './StatsPanel'
 import HistoryPanel from '../History/HistoryPanel'
@@ -13,6 +14,7 @@ export default function Sidebar() {
       <div className="text-base font-semibold text-white tracking-tight">BookAI</div>
       <FilterSelector />
       {mode === 'REASON' && <ReasonStrategy />}
+      <TemperatureInput />
       <ModelInfo />
       <StatsPanel />
       <hr className="border-gray-800" />

@@ -22,23 +22,23 @@ public class ReasoningHandler {
     private final String model;
 
     public LlmResult direct(String task) {
-        var request = new AnthropicRequest(model, 300, MD_SYSTEM, null,
+        var request = new AnthropicRequest(model, 300, MD_SYSTEM, null, null,
                 List.of(new Message("user", task)));
         return anthropicClient.callApi(request);
     }
 
     public LlmResult stepByStep(String task) {
-        var request = new AnthropicRequest(model, 500, MD_SYSTEM, null,
+        var request = new AnthropicRequest(model, 500, MD_SYSTEM, null, null,
                 List.of(new Message("user", task + "\n\nРеши задачу пошагово, объясняя каждый шаг.")));
         return anthropicClient.callApi(request);
     }
 
     public LlmResult metaPrompt(String task) {
-        var metaRequest = new AnthropicRequest(model, 200, null, null,
+        var metaRequest = new AnthropicRequest(model, 200, null, null, null,
                 List.of(new Message("user", "Составь оптимальный промпт для решения следующей задачи: " + task)));
         var meta = anthropicClient.callApi(metaRequest);
 
-        var answerRequest = new AnthropicRequest(model, 300, MD_SYSTEM, null,
+        var answerRequest = new AnthropicRequest(model, 300, MD_SYSTEM, null, null,
                 List.of(new Message("user", meta.text())));
         return meta.add(anthropicClient.callApi(answerRequest));
     }
@@ -52,7 +52,7 @@ public class ReasoningHandler {
                 - Критик: указывает на слабые места и предлагает улучшения
                 Каждый эксперт даёт свой ответ по очереди. В конце — итоговый вывод.
                 """;
-        var request = new AnthropicRequest(model, 600, system, null,
+        var request = new AnthropicRequest(model, 600, system, null, null,
                 List.of(new Message("user", task)));
         return anthropicClient.callApi(request);
     }

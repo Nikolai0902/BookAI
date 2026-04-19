@@ -3,7 +3,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { sendRequest } from '../../api/bookApi'
 
 export default function PromptInput() {
-  const { prompt, mode, strategy, loading, setPrompt, setLoading, setResponse, setError, addToHistory } =
+  const { prompt, mode, strategy, temperature, loading, setPrompt, setLoading, setResponse, setError, addToHistory } =
     useAppStore()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -12,7 +12,7 @@ export default function PromptInput() {
 
     setLoading(true)
     try {
-      const { answer, inputTokens, outputTokens } = await sendRequest(prompt, mode, strategy)
+      const { answer, inputTokens, outputTokens } = await sendRequest(prompt, mode, strategy, temperature)
       setResponse(answer, inputTokens, outputTokens)
       addToHistory({
         id: crypto.randomUUID(),

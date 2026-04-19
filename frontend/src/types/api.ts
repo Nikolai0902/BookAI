@@ -3,6 +3,7 @@ export type ReasoningStrategy = 'DIRECT' | 'STEP_BY_STEP' | 'META_PROMPT' | 'EXP
 
 export interface BookRequest {
   prompt: string
+  temperature?: number
   filter?: {
     type: FilterType
     strategy?: ReasoningStrategy

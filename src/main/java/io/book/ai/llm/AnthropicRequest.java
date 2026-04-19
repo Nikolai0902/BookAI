@@ -19,6 +19,7 @@ public record AnthropicRequest(
         int max_tokens,
         String system,
         List<String> stop_sequences,
+        Double temperature,
         List<Message> messages
 ) {
 

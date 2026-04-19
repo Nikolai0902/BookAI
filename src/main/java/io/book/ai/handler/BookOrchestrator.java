@@ -19,13 +19,13 @@ public class BookOrchestrator {
         Filter filter = request.filter();
 
         if (filter == null) {
-            var r = llmHandler.ask(request.prompt());
+            var r = llmHandler.ask(request.prompt(), request.temperature());
             return new BookResponse(r.answer(), r.inputTokens(), r.outputTokens());
         }
 
         return switch (filter.type()) {
             case COMPARE -> {
-                var r = llmHandler.compare(request.prompt());
+                var r = llmHandler.compare(request.prompt(), request.temperature());
                 yield new BookResponse(toJson(r), r.inputTokens(), r.outputTokens());
             }
             case REASON -> {

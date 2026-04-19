@@ -20,14 +20,14 @@ public class LlmHandler {
     @Value("${anthropic.model}")
     private final String model;
 
-    public LlmAskResponse ask(String prompt) {
-        var request = new AnthropicRequest(model, 300, null, null, List.of(new Message("user", prompt)));
+    public LlmAskResponse ask(String prompt, Double temperature) {
+        var request = new AnthropicRequest(model, 600, null, null, temperature, List.of(new Message("user", prompt)));
         var result = anthropicClient.callApi(request);
         return new LlmAskResponse(result.text(), result.inputTokens(), result.outputTokens());
     }
 
-    public LlmCompareResponse compare(String prompt) {
-        var freeRequest = new AnthropicRequest(model, 300, null, null, List.of(new Message("user", prompt)));
+    public LlmCompareResponse compare(String prompt, Double temperature) {
+        var freeRequest = new AnthropicRequest(model, 300, null, null, temperature, List.of(new Message("user", prompt)));
 
         String systemPrompt = """
                 Отвечай строго в формате JSON. Используй такую структуру:
@@ -35,7 +35,7 @@ public class LlmHandler {
                 Не добавляй ничего вне JSON объекта.
                 """;
         var controlledRequest = new AnthropicRequest(
-                model, 150, systemPrompt, List.of("СТОП"), List.of(new Message("user", prompt))
+                model, 150, systemPrompt, List.of("СТОП"), temperature, List.of(new Message("user", prompt))
         );
 
         var free = anthropicClient.callApi(freeRequest);

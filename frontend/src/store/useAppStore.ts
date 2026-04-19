@@ -17,6 +17,7 @@ interface AppStore {
   mode: Mode
   strategy: Strategy
   prompt: string
+  temperature: number | null
   loading: boolean
   response: string | null
   error: string | null
@@ -26,8 +27,9 @@ interface AppStore {
   setMode: (mode: Mode) => void
   setStrategy: (strategy: Strategy) => void
   setPrompt: (prompt: string) => void
+  setTemperature: (v: number | null) => void
   setLoading: (v: boolean) => void
-  setResponse: (v: string | null, inputTokens?: number, outputTokens?: number) => void
+  setResponse: (v: string | null, inputTokens?: number | null, outputTokens?: number | null) => void
   setError: (v: string | null) => void
   addToHistory: (entry: HistoryEntry) => void
   restoreFromHistory: (entry: HistoryEntry) => void
@@ -39,6 +41,7 @@ export const useAppStore = create<AppStore>()(
       mode: 'ASK',
       strategy: 'DIRECT',
       prompt: '',
+      temperature: null,
       loading: false,
       response: null,
       error: null,
@@ -48,6 +51,7 @@ export const useAppStore = create<AppStore>()(
       setMode: (mode) => set({ mode, response: null, error: null, inputTokens: null, outputTokens: null }),
       setStrategy: (strategy) => set({ strategy }),
       setPrompt: (prompt) => set({ prompt }),
+      setTemperature: (temperature) => set({ temperature }),
       setLoading: (loading) => set({ loading }),
       setResponse: (response, inputTokens = null, outputTokens = null) => set({ response, error: null, inputTokens, outputTokens }),
       setError: (error) => set({ error, loading: false }),
