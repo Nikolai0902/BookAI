@@ -39,3 +39,10 @@ The package layout under `src/main/java/io/book/ai/` follows a layered structure
 - `spring-boot-starter-web` — REST API support
 - `spring-boot-starter-validation` — Bean validation (`@Valid`, `@NotNull`, etc.)
 - `spring-boot-starter-test` — JUnit + Mockito for tests
+- `lombok` — boilerplate reduction; **must be used** in all classes
+
+## Lombok conventions
+
+- Use `@RequiredArgsConstructor` on all `@Component`, `@RestController`, `@Service` classes instead of explicit constructors.
+- For fields injected via `@Value`, annotate the field (not the constructor parameter) — `lombok.config` is configured to copy `@Value` to generated constructor parameters.
+- Do **not** use Lombok on `record` classes — records already generate their own constructors and accessors.
