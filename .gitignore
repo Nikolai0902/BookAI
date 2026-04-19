@@ -45,3 +45,6 @@ frontend/dist/
 
 ### Local Maven settings ###
 settings-local.xml
+
+### Lombok ###
+lombok.config
