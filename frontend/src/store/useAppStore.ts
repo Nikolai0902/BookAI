@@ -18,18 +18,22 @@ interface AppStore {
   strategy: Strategy
   prompt: string
   temperature: number | null
+  model: string | null
   loading: boolean
   response: string | null
   error: string | null
   inputTokens: number | null
   outputTokens: number | null
+  responseTimeMs: number | null
+  costUsd: number | null
   history: HistoryEntry[]
   setMode: (mode: Mode) => void
   setStrategy: (strategy: Strategy) => void
   setPrompt: (prompt: string) => void
   setTemperature: (v: number | null) => void
+  setModel: (v: string | null) => void
   setLoading: (v: boolean) => void
-  setResponse: (v: string | null, inputTokens?: number | null, outputTokens?: number | null) => void
+  setResponse: (v: string | null, inputTokens?: number | null, outputTokens?: number | null, responseTimeMs?: number | null, costUsd?: number | null) => void
   setError: (v: string | null) => void
   addToHistory: (entry: HistoryEntry) => void
   restoreFromHistory: (entry: HistoryEntry) => void
@@ -42,18 +46,23 @@ export const useAppStore = create<AppStore>()(
       strategy: 'DIRECT',
       prompt: '',
       temperature: null,
+      model: null,
       loading: false,
       response: null,
       error: null,
       inputTokens: null,
       outputTokens: null,
+      responseTimeMs: null,
+      costUsd: null,
       history: [],
-      setMode: (mode) => set({ mode, response: null, error: null, inputTokens: null, outputTokens: null }),
+      setMode: (mode) => set({ mode, response: null, error: null, inputTokens: null, outputTokens: null, responseTimeMs: null, costUsd: null }),
       setStrategy: (strategy) => set({ strategy }),
       setPrompt: (prompt) => set({ prompt }),
       setTemperature: (temperature) => set({ temperature }),
+      setModel: (model) => set({ model }),
       setLoading: (loading) => set({ loading }),
-      setResponse: (response, inputTokens = null, outputTokens = null) => set({ response, error: null, inputTokens, outputTokens }),
+      setResponse: (response, inputTokens = null, outputTokens = null, responseTimeMs = null, costUsd = null) =>
+        set({ response, error: null, inputTokens, outputTokens, responseTimeMs, costUsd }),
       setError: (error) => set({ error, loading: false }),
       addToHistory: (entry) =>
         set((state) => ({ history: [entry, ...state.history].slice(0, 20) })),

@@ -19,31 +19,35 @@ public class ReasoningHandler {
     private final AnthropicClient anthropicClient;
 
     @Value("${anthropic.model}")
-    private final String model;
+    private final String defaultModel;
 
-    public LlmResult direct(String task) {
-        var request = new AnthropicRequest(model, 300, MD_SYSTEM, null, null,
+    public LlmResult direct(String task, String model) {
+        String m = model != null ? model : defaultModel;
+        var request = new AnthropicRequest(m, 300, MD_SYSTEM, null, null,
                 List.of(new Message("user", task)));
         return anthropicClient.callApi(request);
     }
 
-    public LlmResult stepByStep(String task) {
-        var request = new AnthropicRequest(model, 500, MD_SYSTEM, null, null,
+    public LlmResult stepByStep(String task, String model) {
+        String m = model != null ? model : defaultModel;
+        var request = new AnthropicRequest(m, 500, MD_SYSTEM, null, null,
                 List.of(new Message("user", task + "\n\nРеши задачу пошагово, объясняя каждый шаг.")));
         return anthropicClient.callApi(request);
     }
 
-    public LlmResult metaPrompt(String task) {
-        var metaRequest = new AnthropicRequest(model, 200, null, null, null,
+    public LlmResult metaPrompt(String task, String model) {
+        String m = model != null ? model : defaultModel;
+        var metaRequest = new AnthropicRequest(m, 200, null, null, null,
                 List.of(new Message("user", "Составь оптимальный промпт для решения следующей задачи: " + task)));
         var meta = anthropicClient.callApi(metaRequest);
 
-        var answerRequest = new AnthropicRequest(model, 300, MD_SYSTEM, null, null,
+        var answerRequest = new AnthropicRequest(m, 300, MD_SYSTEM, null, null,
                 List.of(new Message("user", meta.text())));
         return meta.add(anthropicClient.callApi(answerRequest));
     }
 
-    public LlmResult expertPanel(String task) {
+    public LlmResult expertPanel(String task, String model) {
+        String m = model != null ? model : defaultModel;
         String system = MD_SYSTEM + """
 
                 Ты — группа из трёх экспертов, которые решают задачу вместе:
@@ -52,7 +56,7 @@ public class ReasoningHandler {
                 - Критик: указывает на слабые места и предлагает улучшения
                 Каждый эксперт даёт свой ответ по очереди. В конце — итоговый вывод.
                 """;
-        var request = new AnthropicRequest(model, 600, system, null, null,
+        var request = new AnthropicRequest(m, 600, system, null, null,
                 List.of(new Message("user", task)));
         return anthropicClient.callApi(request);
     }

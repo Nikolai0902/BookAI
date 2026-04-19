@@ -1,3 +1,3 @@
 package io.book.ai.api;
 
-public record LlmCompareResponse(String freeAnswer, String controlledAnswer, int inputTokens, int outputTokens) {}
+public record LlmCompareResponse(String freeAnswer, String controlledAnswer, int inputTokens, int outputTokens, long responseTimeMs) {}

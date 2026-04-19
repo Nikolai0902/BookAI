@@ -3,6 +3,7 @@ import FilterSelector from './FilterSelector'
 import ReasonStrategy from './ReasonStrategy'
 import TemperatureInput from './TemperatureInput'
 import ModelInfo from './ModelInfo'
+import ModelSelector from './ModelSelector'
 import StatsPanel from './StatsPanel'
 import HistoryPanel from '../History/HistoryPanel'
 
@@ -14,6 +15,7 @@ export default function Sidebar() {
       <div className="text-base font-semibold text-white tracking-tight">BookAI</div>
       <FilterSelector />
       {mode === 'REASON' && <ReasonStrategy />}
+      <ModelSelector />
       <TemperatureInput />
       <ModelInfo />
       <StatsPanel />

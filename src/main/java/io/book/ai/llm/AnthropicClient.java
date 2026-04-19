@@ -28,10 +28,12 @@ public class AnthropicClient {
     }
 
     public LlmResult callApi(AnthropicRequest request) {
+        long start = System.currentTimeMillis();
         var response = restClient.post()
                 .body(request)
                 .retrieve()
                 .body(AnthropicResponse.class);
+        long elapsed = System.currentTimeMillis() - start;
 
         String text = response.content().stream()
                 .filter(c -> "text".equals(c.type()))
@@ -40,6 +42,6 @@ public class AnthropicClient {
                 .orElse("");
 
         AnthropicResponse.Usage usage = response.usage();
-        return new LlmResult(text, usage.input_tokens(), usage.output_tokens());
+        return new LlmResult(text, usage.input_tokens(), usage.output_tokens(), elapsed);
     }
 }

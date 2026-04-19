@@ -2,7 +2,7 @@ package io.book.ai.api;
 
 import jakarta.validation.constraints.NotBlank;
 
-public record BookRequest(@NotBlank String prompt, Double temperature, Filter filter) {
+public record BookRequest(@NotBlank String prompt, Double temperature, String model, Filter filter) {
 
     public record Filter(FilterType type, ReasoningStrategy strategy) {}
 

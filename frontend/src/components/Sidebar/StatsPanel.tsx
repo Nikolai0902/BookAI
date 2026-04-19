@@ -10,6 +10,8 @@ export default function StatsPanel() {
   const history = useAppStore((s) => s.history)
   const inputTokens = useAppStore((s) => s.inputTokens)
   const outputTokens = useAppStore((s) => s.outputTokens)
+  const responseTimeMs = useAppStore((s) => s.responseTimeMs)
+  const costUsd = useAppStore((s) => s.costUsd)
 
   const total = history.length
   const lastMode = history[0]?.mode ?? null
@@ -49,6 +51,20 @@ export default function StatsPanel() {
           <div className="flex justify-between">
             <span className="text-gray-500">Исходящих токенов</span>
             <span className="text-yellow-400 font-mono text-xs">{outputTokens.toLocaleString()}</span>
+          </div>
+        )}
+        {responseTimeMs !== null && (
+          <div className="flex justify-between pt-1 border-t border-gray-700">
+            <span className="text-gray-500">Время ответа</span>
+            <span className="text-purple-400 font-mono text-xs">
+              {responseTimeMs >= 1000 ? `${(responseTimeMs / 1000).toFixed(1)} с` : `${responseTimeMs} мс`}
+            </span>
+          </div>
+        )}
+        {costUsd !== null && (
+          <div className="flex justify-between">
+            <span className="text-gray-500">Стоимость</span>
+            <span className="text-orange-400 font-mono text-xs">${costUsd.toFixed(6)}</span>
           </div>
         )}
         {total === 0 && (
