@@ -9,24 +9,18 @@ import io.book.ai.llm.LlmResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Agent that conducts multi-turn book-related conversations via the Anthropic API.
- *
- * <p>Conversation history is persisted between restarts through {@link AgentSessionStore},
- * so the agent remembers previous messages even after a restart.
- */
 @Component
 @RequiredArgsConstructor
 public class AgentBook {
 
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
-    private static final int MAX_TOKENS = 1000;
 
     private final AnthropicClient anthropicClient;
     private final AgentSessionStore sessionStore;
@@ -34,56 +28,38 @@ public class AgentBook {
     @Value("${anthropic.model}")
     private final String defaultModel;
 
-    /**
-     * Processes a chat message within a session and returns the agent's reply.
-     *
-     * <p>If {@code request.sessionId()} is blank or {@code null}, a new session is created
-     * and its ID is included in the response so the client can continue the conversation.
-     *
-     * @param request the incoming request with the user message, optional session ID,
-     *                and optional model override
-     * @return the agent's response including session ID, reply text, and token usage
-     */
+    @Value("${anthropic.max-tokens}")
+    private final int maxTokens;
+
     public AgentChatResponse chat(AgentChatRequest request) {
-        String sessionId = resolveSessionId(request);
-        String model = resolveModel(request);
+        String sessionId = StringUtils.hasText(request.sessionId()) ? request.sessionId() : UUID.randomUUID().toString();
+        String model = StringUtils.hasText(request.model()) ? request.model() : defaultModel;
 
-        List<Message> history = buildHistory(sessionId, request.message());
-        LlmResult result = anthropicClient.callApi(
-                new AnthropicRequest(model, MAX_TOKENS, null, null, null, history));
+        sessionStore.saveMessage(sessionId, ROLE_USER, request.message());
+        List<Message> history = sessionStore.loadHistory(sessionId);
 
-        sessionStore.saveMessage(sessionId, ROLE_ASSISTANT, result.text());
+        LlmResult result = callLlm(model, history, sessionId);
 
-        return toResponse(sessionId, result);
-    }
+        sessionStore.saveAssistantMessage(sessionId, result.text(), result.inputTokens(), result.outputTokens());
 
-    private String resolveSessionId(AgentChatRequest request) {
-        String id = request.sessionId();
-        return (id != null && !id.isBlank()) ? id : UUID.randomUUID().toString();
-    }
-
-    private String resolveModel(AgentChatRequest request) {
-        String model = request.model();
-        return (model != null && !model.isBlank()) ? model : defaultModel;
-    }
-
-    /**
-     * Loads persisted history, appends the new user message, and saves it.
-     */
-    private List<Message> buildHistory(String sessionId, String userMessage) {
-        List<Message> history = new ArrayList<>(sessionStore.loadHistory(sessionId));
-        history.add(new Message(ROLE_USER, userMessage));
-        sessionStore.saveMessage(sessionId, ROLE_USER, userMessage);
-        return history;
-    }
-
-    private AgentChatResponse toResponse(String sessionId, LlmResult result) {
         return new AgentChatResponse(
                 sessionId,
                 result.text(),
                 result.inputTokens(),
                 result.outputTokens(),
-                result.responseTimeMs()
+                result.responseTimeMs(),
+                sessionStore.getTotalInputTokens(sessionId),
+                sessionStore.getTotalOutputTokens(sessionId),
+                sessionStore.getMessageCount(sessionId) / 2
         );
+    }
+
+    private LlmResult callLlm(String model, List<Message> history, String sessionId) {
+        try {
+            return anthropicClient.callApi(new AnthropicRequest(model, maxTokens, null, null, null, history));
+        } catch (HttpClientErrorException e) {
+            sessionStore.saveMessage(sessionId, ROLE_ASSISTANT, "[ERROR] " + e.getResponseBodyAsString());
+            throw e;
+        }
     }
 }

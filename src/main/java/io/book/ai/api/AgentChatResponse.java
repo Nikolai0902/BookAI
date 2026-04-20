@@ -5,5 +5,8 @@ public record AgentChatResponse(
         String reply,
         int inputTokens,
         int outputTokens,
-        long responseTimeMs
+        long responseTimeMs,
+        int totalInputTokens,
+        int totalOutputTokens,
+        long turnNumber
 ) {}

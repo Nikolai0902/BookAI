@@ -12,6 +12,9 @@ export interface AgentChatResponse {
   inputTokens: number
   outputTokens: number
   responseTimeMs: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  turnNumber: number
 }
 
 export async function sendAgentMessage(req: AgentChatRequest): Promise<AgentChatResponse> {

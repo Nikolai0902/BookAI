@@ -16,8 +16,11 @@ public class InfoController {
     @Value("${anthropic.model}")
     private final String model;
 
+    @Value("${anthropic.max-tokens}")
+    private final int maxTokens;
+
     @GetMapping
-    public Map<String, String> info() {
-        return Map.of("model", model);
+    public Map<String, Object> info() {
+        return Map.of("model", model, "maxTokens", maxTokens);
     }
 }

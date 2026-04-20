@@ -23,4 +23,22 @@ public class AgentSessionStore {
     public void saveMessage(String sessionId, String role, String content) {
         repository.save(new AgentMessageEntity(sessionId, role, content));
     }
+
+    public void saveAssistantMessage(String sessionId, String content, int inputTokens, int outputTokens) {
+        repository.save(new AgentMessageEntity(sessionId, "assistant", content, inputTokens, outputTokens));
+    }
+
+    public int getTotalInputTokens(String sessionId) {
+        return repository.sumInputTokensBySessionId(sessionId);
+    }
+
+    public int getTotalOutputTokens(String sessionId) {
+        return repository.sumOutputTokensBySessionId(sessionId);
+    }
+
+    public long getMessageCount(String sessionId) {
+        return repository.countBySessionId(sessionId);
+    }
+
+
 }

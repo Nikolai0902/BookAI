@@ -28,10 +28,19 @@ public class AgentMessageEntity {
     @Column(nullable = false)
     private Instant createdAt;
 
+    private Integer inputTokens;
+    private Integer outputTokens;
+
     public AgentMessageEntity(String sessionId, String role, String content) {
         this.sessionId = sessionId;
         this.role = role;
         this.content = content;
         this.createdAt = Instant.now();
+    }
+
+    public AgentMessageEntity(String sessionId, String role, String content, int inputTokens, int outputTokens) {
+        this(sessionId, role, content);
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
     }
 }
