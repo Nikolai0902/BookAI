@@ -1,3 +1,12 @@
 anthropic:
   api-key: ${ANTHROPIC_API_KEY}
   model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/bookai
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false

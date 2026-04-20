@@ -4,6 +4,24 @@ import ChatHistory from '../components/Agent/ChatHistory'
 import { useAgentStore } from '../store/useAgentStore'
 import { sendAgentMessage } from '../api/agentApi'
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      title="Скопировать Session ID"
+      className="px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors shrink-0"
+    >
+      {copied ? '✓' : '⎘'}
+    </button>
+  )
+}
+
 const MODEL_OPTIONS = [
   { value: '',                          label: 'По умолчанию' },
   { value: 'claude-haiku-4-5-20251001', label: 'Haiku (быстрая)' },
@@ -78,6 +96,23 @@ export default function AgentPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-gray-400 uppercase tracking-wider">Session ID</label>
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={sessionId ?? ''}
+              onChange={(e) => setSessionId(e.target.value)}
+              placeholder="Автоматически"
+              className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+            />
+            {sessionId && <CopyButton text={sessionId} />}
+          </div>
+          {sessionId && (
+            <p className="text-xs text-gray-600 truncate" title={sessionId}>{sessionId}</p>
+          )}
         </div>
 
         <button
