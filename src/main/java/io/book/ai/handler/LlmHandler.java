@@ -11,6 +11,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Базовые операции с LLM: одиночный запрос и сравнение двух режимов генерации.
+ * <p>
+ * Метод {@code ask} — свободный ответ без ограничений формата.
+ * Метод {@code compare} — две параллельных генерации: свободная и строго в JSON,
+ * что позволяет сравнить результаты разных режимов.
+ */
 @Component
 @RequiredArgsConstructor
 public class LlmHandler {
@@ -20,12 +27,29 @@ public class LlmHandler {
     @Value("${anthropic.model}")
     private final String defaultModel;
 
+    /**
+     * Отправляет одиночный запрос к LLM и возвращает свободный текстовый ответ.
+     *
+     * @param prompt      текст запроса пользователя
+     * @param temperature температура генерации (null — использовать дефолт модели)
+     * @param model       идентификатор модели (null — использовать модель из конфига)
+     * @return результат с текстом ответа и статистикой токенов
+     */
     public LlmResult ask(String prompt, Double temperature, String model) {
         String m = model != null ? model : defaultModel;
         var request = new AnthropicRequest(m, 600, null, null, temperature, List.of(new Message("user", prompt)));
         return anthropicClient.callApi(request);
     }
 
+    /**
+     * Выполняет два параллельных запроса на один и тот же промпт:
+     * свободная генерация и строго структурированный JSON-ответ.
+     *
+     * @param prompt      текст запроса пользователя
+     * @param temperature температура генерации (null — использовать дефолт модели)
+     * @param model       идентификатор модели (null — использовать модель из конфига)
+     * @return пара ответов с суммарной статистикой токенов
+     */
     public LlmCompareResponse compare(String prompt, Double temperature, String model) {
         String m = model != null ? model : defaultModel;
         var freeRequest = new AnthropicRequest(m, 300, null, null, temperature, List.of(new Message("user", prompt)));

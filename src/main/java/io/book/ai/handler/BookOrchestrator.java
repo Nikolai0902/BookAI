@@ -9,6 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * Оркестратор запросов к книжному ассистенту.
+ * Принимает {@link BookRequest}, выбирает нужный обработчик (ASK / COMPARE / REASON)
+ * и возвращает {@link BookResponse} с ответом и стоимостью запроса.
+ */
 @Component
 @RequiredArgsConstructor
 public class BookOrchestrator {
@@ -19,6 +24,13 @@ public class BookOrchestrator {
     @Value("${anthropic.model}")
     private final String defaultModel;
 
+    /**
+     * Обрабатывает запрос: выбирает режим (ASK / COMPARE / REASON),
+     * делегирует нужному обработчику и возвращает ответ с расчётом стоимости.
+     *
+     * @param request запрос с промптом, фильтром, моделью и температурой
+     * @return ответ LLM с текстом, токенами, временем и стоимостью
+     */
     public BookResponse handle(BookRequest request) {
         String model = request.model();
         Filter filter = request.filter();

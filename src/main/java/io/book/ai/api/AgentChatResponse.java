@@ -8,5 +8,8 @@ public record AgentChatResponse(
         long responseTimeMs,
         int totalInputTokens,
         int totalOutputTokens,
-        long turnNumber
+        long turnNumber,
+        boolean compressionEnabled,
+        int recentMessagesAsIs,
+        int summarizedMessagesCount
 ) {}

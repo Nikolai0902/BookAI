@@ -38,6 +38,30 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
 }
 const DEFAULT_PRICING = MODEL_PRICING['claude-sonnet-4-6']
 
+function CompressionPanel() {
+  const compressionStats = useAgentStore((s) => s.compressionStats)
+  const useCompression = useAgentStore((s) => s.useCompression)
+  const messages = useAgentStore((s) => s.messages)
+
+  if (!useCompression || messages.length === 0) return null
+
+  return (
+    <div className="flex flex-col gap-1.5 p-3 bg-gray-800 rounded-lg text-xs">
+      <div className="text-gray-400 uppercase tracking-wider font-medium">Контекст (сжатие)</div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <span className="text-gray-500">Как есть</span>
+        <span className="text-blue-300 text-right font-mono">
+          {compressionStats ? compressionStats.recentAsIs : '—'} сообщ.
+        </span>
+        <span className="text-gray-500">В саммари</span>
+        <span className="text-yellow-400 text-right font-mono">
+          {compressionStats ? compressionStats.summarized : '—'} сообщ.
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function TokenStatsPanel() {
   const tokenTotals = useAgentStore((s) => s.tokenTotals)
   const messages = useAgentStore((s) => s.messages)
@@ -118,8 +142,13 @@ function TokenStatsPanel() {
 
 export default function AgentPage() {
   const [input, setInput] = useState('')
-  const { sessionId, model, isLoading, error, addMessage, setSessionId, setLoading, setError, setModel, clearSession, setTokenTotals } =
-    useAgentStore()
+  const {
+    sessionId, model, isLoading, error, messages, useCompression,
+    addMessage, setSessionId, setLoading, setError, setModel,
+    clearSession, setTokenTotals, toggleCompression, setCompressionStats,
+  } = useAgentStore()
+
+  const sessionStarted = messages.length > 0
 
   const handleSend = async () => {
     const text = input.trim()
@@ -135,6 +164,7 @@ export default function AgentPage() {
         message: text,
         sessionId: sessionId ?? undefined,
         model: model || null,
+        useCompression,
       })
       setSessionId(res.sessionId)
       addMessage({
@@ -152,6 +182,9 @@ export default function AgentPage() {
         totalOutputTokens: res.totalOutputTokens,
         turnNumber: res.turnNumber,
       })
+      if (res.compressionEnabled) {
+        setCompressionStats({ recentAsIs: res.recentMessagesAsIs, summarized: res.summarizedMessagesCount })
+      }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       setError(msg ? `Ошибка: ${msg}` : 'Ошибка при обращении к агенту')
@@ -201,6 +234,27 @@ export default function AgentPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-gray-400 uppercase tracking-wider">Сжатие контекста</label>
+          <label className={`flex items-center gap-2 ${sessionStarted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              checked={useCompression}
+              onChange={toggleCompression}
+              disabled={sessionStarted}
+              className="w-4 h-4 rounded accent-blue-500 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+            />
+            <span className={`text-sm ${sessionStarted ? 'text-gray-500' : 'text-gray-300'}`}>
+              {sessionStarted
+                ? useCompression ? 'Включено (зафиксировано)' : 'Выключено (зафиксировано)'
+                : useCompression ? 'Включено' : 'Выключено'}
+            </span>
+          </label>
+          {!sessionStarted && (
+            <p className="text-xs text-gray-600">Задаётся до начала сессии</p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label className="text-xs text-gray-400 uppercase tracking-wider">Session ID</label>
           <div className="flex gap-1">
             <input
@@ -218,6 +272,8 @@ export default function AgentPage() {
         </div>
 
         <ModelInfo />
+
+        <CompressionPanel />
 
         <TokenStatsPanel />
 

@@ -3,6 +3,10 @@ anthropic:
   model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
   max-tokens: ${ANTHROPIC_MAX_TOKENS:1000}
 
+agent:
+  context:
+    recent-messages-count: ${AGENT_RECENT_MESSAGES_COUNT:5}
+
 spring:
   datasource:
     url: jdbc:h2:file:./data/bookai

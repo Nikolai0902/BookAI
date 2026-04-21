@@ -5,9 +5,17 @@ import io.book.ai.repository.AgentMessageRepository;
 import io.book.ai.repository.entity.AgentMessageEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * Хранилище сообщений и саммари для диалоговых сессий.
+ * <p>
+ * Инкапсулирует все операции с {@link AgentMessageRepository}:
+ * сохранение и загрузку сообщений, управление записью-саммари,
+ * агрегацию статистики токенов по сессии.
+ */
 @Component
 @RequiredArgsConstructor
 public class AgentSessionStore {
@@ -15,9 +23,23 @@ public class AgentSessionStore {
     private final AgentMessageRepository repository;
 
     public List<Message> loadHistory(String sessionId) {
-        return repository.findBySessionIdOrderByCreatedAt(sessionId).stream()
+        return repository.findBySessionIdAndSummaryFalseOrderByCreatedAt(sessionId).stream()
                 .map(e -> new Message(e.getRole(), e.getContent()))
                 .toList();
+    }
+
+    public List<AgentMessageEntity> loadRawHistory(String sessionId) {
+        return repository.findBySessionIdAndSummaryFalseOrderByCreatedAt(sessionId);
+    }
+
+    public AgentMessageEntity getSummary(String sessionId) {
+        return repository.findTopBySessionIdAndSummaryTrueOrderByCreatedAtDesc(sessionId).orElse(null);
+    }
+
+    @Transactional
+    public void saveSummary(String sessionId, String content, int coverCount) {
+        repository.deleteBySessionIdAndSummaryTrue(sessionId);
+        repository.save(new AgentMessageEntity(sessionId, "summary", content, true, coverCount));
     }
 
     public void saveMessage(String sessionId, String role, String content) {
@@ -37,8 +59,6 @@ public class AgentSessionStore {
     }
 
     public long getMessageCount(String sessionId) {
-        return repository.countBySessionId(sessionId);
+        return repository.countBySessionIdAndSummaryFalse(sessionId);
     }
-
-
 }

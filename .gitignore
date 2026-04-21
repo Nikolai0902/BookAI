@@ -48,3 +48,11 @@ settings-local.xml
 
 ### Lombok ###
 lombok.config
+
+### Tests ###
+tests/node_modules/
+tests/package-lock.json
+
+### Results ###
+result/playwright/
+data/
