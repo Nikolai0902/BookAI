@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import ChatHistory from '../components/Agent/ChatHistory'
 import ModelInfo from '../components/Sidebar/ModelInfo'
+import StrategySelector from '../components/Agent/StrategySelector'
+import StickyFactsPanel from '../components/Agent/StickyFactsPanel'
+import BranchingPanel from '../components/Agent/BranchingPanel'
 import { useAgentStore } from '../store/useAgentStore'
 import { sendAgentMessage } from '../api/agentApi'
 
@@ -40,10 +43,10 @@ const DEFAULT_PRICING = MODEL_PRICING['claude-sonnet-4-6']
 
 function CompressionPanel() {
   const compressionStats = useAgentStore((s) => s.compressionStats)
-  const useCompression = useAgentStore((s) => s.useCompression)
+  const strategy = useAgentStore((s) => s.strategy)
   const messages = useAgentStore((s) => s.messages)
 
-  if (!useCompression || messages.length === 0) return null
+  if (strategy !== 'COMPRESSION' || messages.length === 0) return null
 
   return (
     <div className="flex flex-col gap-1.5 p-3 bg-gray-800 rounded-lg text-xs">
@@ -51,7 +54,7 @@ function CompressionPanel() {
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <span className="text-gray-500">Как есть</span>
         <span className="text-blue-300 text-right font-mono">
-          {compressionStats ? compressionStats.recentAsIs : '—'} сообщ.
+          {compressionStats ? compressionStats.recentMessagesCount : '—'} сообщ.
         </span>
         <span className="text-gray-500">В саммари</span>
         <span className="text-yellow-400 text-right font-mono">
@@ -74,9 +77,7 @@ function TokenStatsPanel() {
   const last = assistantMessages[assistantMessages.length - 1]
   const prev = assistantMessages[assistantMessages.length - 2]
 
-  // inputTokens последнего запроса = вся история, которую видела модель
   const historyTokens = last?.inputTokens ?? 0
-  // разница между последними двумя запросами = сколько добавило новое сообщение + ответ
   const newMessageTokens = prev ? historyTokens - (prev.inputTokens ?? 0) : historyTokens
 
   const totalIn = tokenTotals?.totalInputTokens ?? 0
@@ -117,25 +118,27 @@ function TokenStatsPanel() {
         <span className="text-yellow-400 text-right font-mono">{sessionCost}</span>
       </div>
 
-      {assistantMessages.length > 1 && (
-        <div className="mt-1 border-t border-gray-700 pt-2">
-          <div className="text-gray-500 mb-1">Рост контекста по ходам:</div>
-          <div className="flex items-end gap-0.5 h-8">
-            {assistantMessages.map((m, i) => {
-              const maxIn = Math.max(...assistantMessages.map((a) => a.inputTokens ?? 0))
-              const height = maxIn > 0 ? Math.max(4, ((m.inputTokens ?? 0) / maxIn) * 28) : 4
-              return (
-                <div
-                  key={i}
-                  title={`Ход ${i + 1}: история ${m.inputTokens} / ответ ${m.outputTokens}`}
-                  className="flex-1 bg-blue-500 rounded-sm opacity-80 hover:opacity-100 transition-opacity cursor-default"
-                  style={{ height: `${height}px` }}
-                />
-              )
-            })}
+      {assistantMessages.length > 1 && (() => {
+        const maxIn = Math.max(...assistantMessages.map((a) => a.inputTokens ?? 0))
+        return (
+          <div className="mt-1 border-t border-gray-700 pt-2">
+            <div className="text-gray-500 mb-1">Рост контекста по ходам:</div>
+            <div className="flex items-end gap-0.5 h-8">
+              {assistantMessages.map((m, i) => {
+                const height = maxIn > 0 ? Math.max(4, ((m.inputTokens ?? 0) / maxIn) * 28) : 4
+                return (
+                  <div
+                    key={i}
+                    title={`Ход ${i + 1}: история ${m.inputTokens} / ответ ${m.outputTokens}`}
+                    className="flex-1 bg-blue-500 rounded-sm opacity-80 hover:opacity-100 transition-opacity cursor-default"
+                    style={{ height: `${height}px` }}
+                  />
+                )
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
@@ -143,12 +146,10 @@ function TokenStatsPanel() {
 export default function AgentPage() {
   const [input, setInput] = useState('')
   const {
-    sessionId, model, isLoading, error, messages, useCompression,
+    sessionId, model, isLoading, error, messages, strategy,
     addMessage, setSessionId, setLoading, setError, setModel,
-    clearSession, setTokenTotals, toggleCompression, setCompressionStats,
+    clearSession, setTokenTotals, setCompressionStats, setFacts,
   } = useAgentStore()
-
-  const sessionStarted = messages.length > 0
 
   const handleSend = async () => {
     const text = input.trim()
@@ -164,7 +165,7 @@ export default function AgentPage() {
         message: text,
         sessionId: sessionId ?? undefined,
         model: model || null,
-        useCompression,
+        strategy,
       })
       setSessionId(res.sessionId)
       addMessage({
@@ -176,14 +177,18 @@ export default function AgentPage() {
         totalOutputTokens: res.totalOutputTokens,
         turnNumber: res.turnNumber,
         responseTimeMs: res.responseTimeMs,
+        lastMessageId: res.lastMessageId,
       })
       setTokenTotals({
         totalInputTokens: res.totalInputTokens,
         totalOutputTokens: res.totalOutputTokens,
         turnNumber: res.turnNumber,
       })
-      if (res.compressionEnabled) {
-        setCompressionStats({ recentAsIs: res.recentMessagesAsIs, summarized: res.summarizedMessagesCount })
+      if (res.strategy === 'COMPRESSION') {
+        setCompressionStats({ recentMessagesCount: res.recentMessagesCount, summarized: res.summarizedMessagesCount })
+      }
+      if (res.strategy === 'STICKY_FACTS') {
+        setFacts(res.factsSnapshot ?? null)
       }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -233,26 +238,7 @@ export default function AgentPage() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-gray-400 uppercase tracking-wider">Сжатие контекста</label>
-          <label className={`flex items-center gap-2 ${sessionStarted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-            <input
-              type="checkbox"
-              checked={useCompression}
-              onChange={toggleCompression}
-              disabled={sessionStarted}
-              className="w-4 h-4 rounded accent-blue-500 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-            />
-            <span className={`text-sm ${sessionStarted ? 'text-gray-500' : 'text-gray-300'}`}>
-              {sessionStarted
-                ? useCompression ? 'Включено (зафиксировано)' : 'Выключено (зафиксировано)'
-                : useCompression ? 'Включено' : 'Выключено'}
-            </span>
-          </label>
-          {!sessionStarted && (
-            <p className="text-xs text-gray-600">Задаётся до начала сессии</p>
-          )}
-        </div>
+        <StrategySelector />
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-gray-400 uppercase tracking-wider">Session ID</label>
@@ -274,6 +260,8 @@ export default function AgentPage() {
         <ModelInfo />
 
         <CompressionPanel />
+        <StickyFactsPanel />
+        <BranchingPanel />
 
         <TokenStatsPanel />
 

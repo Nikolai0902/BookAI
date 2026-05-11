@@ -1,5 +1,7 @@
 package io.book.ai.api;
 
+import io.book.ai.handler.context.ContextStrategyType;
+
 public record AgentChatResponse(
         String sessionId,
         String reply,
@@ -9,7 +11,10 @@ public record AgentChatResponse(
         int totalInputTokens,
         int totalOutputTokens,
         long turnNumber,
-        boolean compressionEnabled,
-        int recentMessagesAsIs,
-        int summarizedMessagesCount
+        ContextStrategyType strategy,
+        int recentMessagesCount,
+        int summarizedMessagesCount,
+        String factsSnapshot,
+        /** DB-идентификатор сохранённого ответа ассистента; используется как checkpointMessageId при ветвлении. */
+        long lastMessageId
 ) {}

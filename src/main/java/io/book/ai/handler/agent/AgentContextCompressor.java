@@ -13,11 +13,15 @@ import java.util.List;
 /**
  * Компрессор истории диалога для экономии токенов.
  * <p>
- * Оставляет последние N сообщений "как есть" (N задаётся через
+ * Оставляет последние N сообщений «как есть» (N задаётся через
  * {@code agent.context.recent-messages-count}), а более старые сообщения
- * заменяет накопительным саммари, которое инжектируется в system-промпт.
- * При обновлении саммари передаёт LLM только новые сообщения сверх
- * уже покрытых (инкрементальный подход).
+ * заменяет накопительным саммари, которое инжектируется в системный промпт.
+ * <p>
+ * Саммари обновляется инкрементально: при каждом вызове суммаризируются
+ * только сообщения сверх уже покрытых предыдущим саммари.
+ * Это позволяет не пересоздавать саммари с нуля на каждом ходу.
+ * <p>
+ * Используется стратегией {@link io.book.ai.handler.context.strategy.CompressionStrategy}.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,13 +34,17 @@ public class AgentContextCompressor {
 
     /**
      * Сжимает историю диалога: оставляет последние N сообщений как есть,
-     * остальные заменяет саммари (инкрементально — только новые сверх уже покрытых).
-     * Если история не превышает N, возвращает её без изменений.
+     * остальные заменяет накопительным саммари.
+     * <p>
+     * Если история не превышает N сообщений, саммари не нужно — возвращается
+     * вся история без изменений ({@code summaryUpdated = false}).
+     * Если саммари уже существует и покрывает ровно столько сообщений, сколько нужно,
+     * новый LLM-вызов не производится ({@code summaryUpdated = false}).
      *
      * @param allMessages           полная история без саммари-записей
-     * @param existingSummaryEntity текущая запись-саммари из БД (null если нет)
+     * @param existingSummaryEntity текущая запись-саммари из БД ({@code null} если нет)
      * @param model                 идентификатор модели для генерации саммари
-     * @return сжатый контекст: саммари + последние N сообщений
+     * @return результат сжатия: саммари (или {@code null}) + последние N сообщений
      */
     public CompressedContext compress(List<AgentMessageEntity> allMessages,
                                       AgentMessageEntity existingSummaryEntity,
@@ -61,6 +69,16 @@ public class AgentContextCompressor {
         return new CompressedContext(summary, recentMessages, toSummarize, true);
     }
 
+    /**
+     * Генерирует текст саммари через LLM.
+     * Если передано {@code previousSummary}, просит модель дополнить его новыми сообщениями.
+     * Если предыдущего саммари нет, суммаризирует список сообщений с нуля.
+     *
+     * @param messages        сообщения, которые нужно включить в саммари
+     * @param previousSummary предыдущее саммари для инкрементального обновления; {@code null} при первом вызове
+     * @param model           идентификатор модели
+     * @return текст обновлённого саммари
+     */
     private String generateSummary(List<AgentMessageEntity> messages, String previousSummary, String model) {
         StringBuilder conv = new StringBuilder();
         for (AgentMessageEntity m : messages) {
@@ -86,6 +104,16 @@ public class AgentContextCompressor {
                 .toList();
     }
 
+    /**
+     * Результат сжатия истории диалога.
+     *
+     * @param summaryText     текст накопительного саммари; {@code null} если история
+     *                        короче порога и саммари не нужно
+     * @param recentMessages  последние N сообщений, передаваемые в LLM «как есть»
+     * @param summarizedCount количество сообщений, охваченных саммари
+     * @param summaryUpdated  {@code true} если саммари было пересоздано на этом ходу
+     *                        и должно быть сохранено в базе
+     */
     public record CompressedContext(
             String summaryText,
             List<Message> recentMessages,

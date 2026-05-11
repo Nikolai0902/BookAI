@@ -3,6 +3,7 @@ package io.book.ai.repository;
 import io.book.ai.repository.entity.AgentMessageEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,4 +34,8 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessageEntity
     long countBySessionId(String sessionId);
 
     long countBySessionIdAndSummaryFalse(String sessionId);
+
+    @Query("SELECT m FROM AgentMessageEntity m WHERE m.sessionId = :sessionId AND m.id <= :upToId AND m.summary = false ORDER BY m.createdAt")
+    List<AgentMessageEntity> findBySessionIdUpToIdOrderByCreatedAt(@Param("sessionId") String sessionId,
+                                                                    @Param("upToId") Long upToId);
 }
