@@ -4,7 +4,6 @@ export type ContextStrategyType =
   | 'FULL_HISTORY'
   | 'COMPRESSION'
   | 'SLIDING_WINDOW'
-  | 'STICKY_FACTS'
   | 'BRANCHING'
 
 export interface AgentChatRequest {
@@ -12,6 +11,13 @@ export interface AgentChatRequest {
   sessionId?: string
   model?: string | null
   strategy?: ContextStrategyType
+  memoryEnabled?: boolean
+}
+
+export interface MemoryLayersSnapshot {
+  shortTermCount: number
+  workingMemory: string | null
+  longTermMemory: Record<string, string>
 }
 
 export interface AgentChatResponse {
@@ -26,8 +32,8 @@ export interface AgentChatResponse {
   strategy: ContextStrategyType
   recentMessagesCount: number
   summarizedMessagesCount: number
-  factsSnapshot?: string | null
   lastMessageId: number
+  memoryLayersSnapshot: MemoryLayersSnapshot
 }
 
 export interface BranchCreateRequest {
@@ -48,6 +54,7 @@ export async function sendAgentMessage(req: AgentChatRequest): Promise<AgentChat
   const body: AgentChatRequest = {
     message: req.message,
     strategy: req.strategy ?? 'FULL_HISTORY',
+    memoryEnabled: req.memoryEnabled ?? true,
   }
   if (req.sessionId) body.sessionId = req.sessionId
   if (req.model) body.model = req.model
@@ -63,4 +70,8 @@ export async function createBranch(req: BranchCreateRequest): Promise<BranchInfo
 export async function listBranches(rootSessionId: string): Promise<BranchInfo[]> {
   const { data } = await axios.get<BranchInfo[]>(`/api/agent/branch/${rootSessionId}`)
   return data
+}
+
+export async function clearLongTermMemory(): Promise<void> {
+  await axios.delete('/api/memory/longterm')
 }

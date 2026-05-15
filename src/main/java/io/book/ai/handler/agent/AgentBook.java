@@ -2,6 +2,7 @@ package io.book.ai.handler.agent;
 
 import io.book.ai.api.AgentChatRequest;
 import io.book.ai.api.AgentChatResponse;
+import io.book.ai.api.MemoryLayersSnapshot;
 import io.book.ai.handler.context.ContextResult;
 import io.book.ai.handler.context.ContextStrategyOrchestrator;
 import io.book.ai.handler.context.ContextStrategyType;
@@ -43,6 +44,7 @@ public class AgentBook {
     private final AnthropicClient anthropicClient;
     private final AgentSessionStore sessionStore;
     private final ContextStrategyOrchestrator orchestrator;
+    private final AgentMemoryManager memoryManager;
 
     @Value("${anthropic.model}")
     private final String defaultModel;
@@ -55,24 +57,34 @@ public class AgentBook {
      *
      * @param request запрос с текстом, необязательными {@code sessionId} и {@code model},
      *                а также выбранной стратегией контекста
-     * @return ответ агента с текстом, статистикой токенов текущего хода и накопленными
-     *         итогами сессии; при стратегии {@code STICKY_FACTS} дополнительно содержит
-     *         актуальный снимок ключевых фактов
+     * @return ответ агента с текстом, статистикой токенов и снимком слоёв памяти
      */
     public AgentChatResponse chat(AgentChatRequest request) {
         String sessionId = StringUtils.hasText(request.sessionId()) ? request.sessionId() : UUID.randomUUID().toString();
         String model = StringUtils.hasText(request.model()) ? request.model() : defaultModel;
         ContextStrategyType strategy = request.strategy() != null ? request.strategy() : ContextStrategyType.FULL_HISTORY;
 
+        boolean memoryEnabled = !Boolean.FALSE.equals(request.memoryEnabled());
+
         sessionStore.saveMessage(sessionId, ROLE_USER, request.message());
 
+        String memoryPrompt = memoryEnabled ? memoryManager.buildMemorySystemPrompt(sessionId) : null;
         ContextResult ctx = orchestrator.buildContext(strategy, sessionId, model);
-        LlmResult result = callLlm(model, ctx.messages(), sessionId, ctx.systemPrompt());
+        String combinedSystemPrompt = mergeSystemPrompts(memoryPrompt, ctx.systemPrompt());
+
+        LlmResult result = callLlm(model, ctx.messages(), sessionId, combinedSystemPrompt);
 
         long lastMessageId = sessionStore.saveAssistantMessage(sessionId, result.text(), result.inputTokens(), result.outputTokens());
-        String factsSnapshot = orchestrator.afterLlmResponse(strategy, sessionId, model);
+        orchestrator.afterLlmResponse(strategy, sessionId, model);
 
-        return buildResponse(sessionId, result, strategy, ctx, factsSnapshot, lastMessageId);
+        List<Message> lastExchange = List.of(
+                new Message(ROLE_USER, request.message()),
+                new Message(ROLE_ASSISTANT, result.text()));
+        MemoryLayersSnapshot memorySnapshot = memoryEnabled
+                ? memoryManager.updateMemory(sessionId, lastExchange)
+                : memoryManager.buildSnapshot(sessionId);
+
+        return buildResponse(sessionId, result, strategy, ctx, lastMessageId, memorySnapshot);
     }
 
     /**
@@ -80,6 +92,11 @@ public class AgentBook {
      * При ошибке API сохраняет сообщение об ошибке в базе от имени ассистента,
      * чтобы история диалога оставалась консистентной, и пробрасывает исключение.
      */
+    private static String mergeSystemPrompts(String a, String b) {
+        if (StringUtils.hasText(a) && StringUtils.hasText(b)) return a + "\n\n" + b;
+        return StringUtils.hasText(a) ? a : b;
+    }
+
     private LlmResult callLlm(String model, List<Message> history, String sessionId, String systemPrompt) {
         try {
             return anthropicClient.callApi(new AnthropicRequest(model, maxTokens, systemPrompt, null, null, history));
@@ -91,7 +108,7 @@ public class AgentBook {
 
     private AgentChatResponse buildResponse(String sessionId, LlmResult result,
                                              ContextStrategyType strategy, ContextResult ctx,
-                                             String factsSnapshot, long lastMessageId) {
+                                             long lastMessageId, MemoryLayersSnapshot memorySnapshot) {
         return new AgentChatResponse(
                 sessionId,
                 result.text(),
@@ -104,8 +121,8 @@ public class AgentBook {
                 strategy,
                 ctx.recentMessagesCount(),
                 ctx.summarizedMessagesCount(),
-                factsSnapshot,
-                lastMessageId
+                lastMessageId,
+                memorySnapshot
         );
     }
 }

@@ -14,7 +14,7 @@ public record AgentChatResponse(
         ContextStrategyType strategy,
         int recentMessagesCount,
         int summarizedMessagesCount,
-        String factsSnapshot,
         /** DB-идентификатор сохранённого ответа ассистента; используется как checkpointMessageId при ветвлении. */
-        long lastMessageId
+        long lastMessageId,
+        MemoryLayersSnapshot memoryLayersSnapshot
 ) {}

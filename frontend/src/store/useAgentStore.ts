@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ContextStrategyType, BranchInfo } from '../api/agentApi'
+import type { ContextStrategyType, BranchInfo, MemoryLayersSnapshot } from '../api/agentApi'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -32,8 +32,9 @@ interface AgentStore {
   model: string | null
   tokenTotals: TokenTotals | null
   strategy: ContextStrategyType
+  memoryEnabled: boolean
   compressionStats: CompressionStats | null
-  factsSnapshot: string | null
+  memoryLayersSnapshot: MemoryLayersSnapshot | null
   branches: BranchInfo[]
   addMessage: (msg: ChatMessage) => void
   setSessionId: (id: string | null) => void
@@ -42,8 +43,9 @@ interface AgentStore {
   setModel: (v: string | null) => void
   setTokenTotals: (t: TokenTotals) => void
   setStrategy: (s: ContextStrategyType) => void
+  setMemoryEnabled: (v: boolean) => void
   setCompressionStats: (stats: CompressionStats) => void
-  setFacts: (facts: string | null) => void
+  setMemoryLayersSnapshot: (snapshot: MemoryLayersSnapshot | null) => void
   setBranches: (branches: BranchInfo[]) => void
   addBranch: (branch: BranchInfo) => void
   switchToBranch: (branchSessionId: string) => void
@@ -58,8 +60,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   model: null,
   tokenTotals: null,
   strategy: 'FULL_HISTORY',
+  memoryEnabled: true,
   compressionStats: null,
-  factsSnapshot: null,
+  memoryLayersSnapshot: null,
   branches: [],
   addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
   setSessionId: (id) => set({ sessionId: id || null }),
@@ -72,8 +75,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       set({ strategy })
     }
   },
+  setMemoryEnabled: (memoryEnabled) => set({ memoryEnabled }),
   setCompressionStats: (compressionStats) => set({ compressionStats }),
-  setFacts: (factsSnapshot) => set({ factsSnapshot }),
+  setMemoryLayersSnapshot: (memoryLayersSnapshot) => set({ memoryLayersSnapshot }),
   setBranches: (branches) => set({ branches }),
   addBranch: (branch) => set((state) => ({ branches: [...state.branches, branch] })),
   switchToBranch: (branchSessionId) => set((state) => ({
@@ -82,7 +86,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     error: null,
     tokenTotals: null,
     compressionStats: null,
-    factsSnapshot: null,
+    memoryLayersSnapshot: null,
   })),
   clearSession: () => set({
     messages: [],
@@ -90,7 +94,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     error: null,
     tokenTotals: null,
     compressionStats: null,
-    factsSnapshot: null,
+    memoryLayersSnapshot: null,
     branches: [],
     strategy: 'FULL_HISTORY',
   }),

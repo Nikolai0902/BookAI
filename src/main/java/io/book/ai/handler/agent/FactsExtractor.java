@@ -1,4 +1,4 @@
-package io.book.ai.handler.context.strategy.sticky;
+package io.book.ai.handler.agent;
 
 import io.book.ai.llm.AnthropicClient;
 import io.book.ai.llm.AnthropicRequest;
@@ -10,11 +10,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Извлекает и обновляет блок ключевых фактов из истории диалога с помощью LLM.
- * <p>
- * Всегда использует модель {@code claude-haiku} для снижения стоимости,
- * так как задача извлечения фактов не требует мощи старших моделей.
- * Используется стратегией {@link StickyFactsStrategy}.
+ * Извлекает и обновляет рабочую память (блок ключевых фактов) из последнего обмена с помощью LLM.
+ * Используется {@link AgentMemoryManager} для всех стратегий контекста.
  */
 @Component
 @RequiredArgsConstructor
@@ -50,12 +47,21 @@ public class FactsExtractor {
         AnthropicRequest req = new AnthropicRequest(
                 HAIKU_MODEL, 800,
                 """
-                You maintain a key-value fact list about an ongoing conversation.
+                You maintain working memory for the current session as key: value facts.
+
+                Capture facts in these groups (use these key names where applicable):
+                - user_name, user_profession, user_language — who the user is
+                - task — what the user is currently working on or asking about
+                - goal — the explicit goal or desired outcome
+                - constraints — limitations, requirements, non-negotiables
+                - decisions — choices the user has made during this session
+                - progress — what has been done or resolved so far
+
                 Rules:
-                - ALWAYS copy ALL existing facts into your response, even if the new exchange does not mention them.
-                - Only update a fact's value if the new exchange explicitly changes it.
-                - Add new facts extracted from the new exchange.
-                - Return ONLY key: value lines, one per line, no explanations.""",
+                - ALWAYS copy ALL existing facts unchanged unless the new exchange explicitly updates them.
+                - Add new facts found in the new exchange.
+                - Skip facts that have no value (nothing was mentioned).
+                - Return ONLY key: value lines, one per line, no explanations, no headers.""",
                 null, null,
                 List.of(new Message("user", userContent))
         );

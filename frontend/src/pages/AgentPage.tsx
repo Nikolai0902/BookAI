@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import ChatHistory from '../components/Agent/ChatHistory'
 import ModelInfo from '../components/Sidebar/ModelInfo'
 import StrategySelector from '../components/Agent/StrategySelector'
-import StickyFactsPanel from '../components/Agent/StickyFactsPanel'
 import BranchingPanel from '../components/Agent/BranchingPanel'
+import MemoryLayersPanel from '../components/Agent/MemoryLayersPanel'
 import { useAgentStore } from '../store/useAgentStore'
 import { sendAgentMessage } from '../api/agentApi'
 
@@ -146,9 +146,10 @@ function TokenStatsPanel() {
 export default function AgentPage() {
   const [input, setInput] = useState('')
   const {
-    sessionId, model, isLoading, error, messages, strategy,
+    sessionId, model, isLoading, error, messages, strategy, memoryEnabled,
     addMessage, setSessionId, setLoading, setError, setModel,
-    clearSession, setTokenTotals, setCompressionStats, setFacts,
+    clearSession, setTokenTotals, setCompressionStats,
+    setMemoryLayersSnapshot, setMemoryEnabled,
   } = useAgentStore()
 
   const handleSend = async () => {
@@ -166,6 +167,7 @@ export default function AgentPage() {
         sessionId: sessionId ?? undefined,
         model: model || null,
         strategy,
+        memoryEnabled,
       })
       setSessionId(res.sessionId)
       addMessage({
@@ -187,9 +189,7 @@ export default function AgentPage() {
       if (res.strategy === 'COMPRESSION') {
         setCompressionStats({ recentMessagesCount: res.recentMessagesCount, summarized: res.summarizedMessagesCount })
       }
-      if (res.strategy === 'STICKY_FACTS') {
-        setFacts(res.factsSnapshot ?? null)
-      }
+      setMemoryLayersSnapshot(res.memoryLayersSnapshot ?? null)
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       setError(msg ? `Ошибка: ${msg}` : 'Ошибка при обращении к агенту')
@@ -238,6 +238,16 @@ export default function AgentPage() {
           </select>
         </div>
 
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-gray-400 uppercase tracking-wider">Память</label>
+          <button
+            onClick={() => setMemoryEnabled(!memoryEnabled)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${memoryEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+          >
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${memoryEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+          </button>
+        </div>
+
         <StrategySelector />
 
         <div className="flex flex-col gap-1.5">
@@ -260,8 +270,8 @@ export default function AgentPage() {
         <ModelInfo />
 
         <CompressionPanel />
-        <StickyFactsPanel />
         <BranchingPanel />
+        <MemoryLayersPanel />
 
         <TokenStatsPanel />
 

@@ -3,9 +3,11 @@ package io.book.ai.handler.agent;
 import io.book.ai.api.branch.BranchInfo;
 import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.repository.AgentBranchRepository;
+import io.book.ai.repository.AgentLongTermMemoryRepository;
 import io.book.ai.repository.AgentMessageRepository;
 import io.book.ai.repository.AgentSessionFactsRepository;
 import io.book.ai.repository.entity.AgentBranchEntity;
+import io.book.ai.repository.entity.AgentLongTermMemoryEntity;
 import io.book.ai.repository.entity.AgentMessageEntity;
 import io.book.ai.repository.entity.AgentSessionFactsEntity;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ public class AgentSessionStore {
     private final AgentMessageRepository repository;
     private final AgentSessionFactsRepository factsRepository;
     private final AgentBranchRepository branchRepository;
+    private final AgentLongTermMemoryRepository longTermRepository;
 
     /**
      * Загружает историю сессии в виде объектов {@link Message} для передачи в LLM.
@@ -224,6 +227,23 @@ public class AgentSessionStore {
         return branchRepository.findByRootSessionIdOrderByCreatedAt(rootSessionId).stream()
                 .map(this::toBranchInfo)
                 .toList();
+    }
+
+    public List<AgentLongTermMemoryEntity> getLongTermMemory(String profileId) {
+        return longTermRepository.findByProfileIdOrderByCategory(profileId);
+    }
+
+    @Transactional
+    public void upsertLongTermFact(String profileId, String category, String key, String value) {
+        AgentLongTermMemoryEntity entity = longTermRepository.findByProfileIdAndKey(profileId, key)
+                .orElseGet(() -> new AgentLongTermMemoryEntity(profileId, category, key, value));
+        entity.update(category, value);
+        longTermRepository.save(entity);
+    }
+
+    @Transactional
+    public void clearLongTermMemory(String profileId) {
+        longTermRepository.deleteByProfileId(profileId);
     }
 
     private BranchInfo toBranchInfo(AgentBranchEntity e) {

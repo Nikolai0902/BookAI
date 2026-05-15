@@ -5,7 +5,6 @@ const STRATEGY_OPTIONS: { value: ContextStrategyType; label: string; description
   { value: 'FULL_HISTORY',   label: 'Полная история',   description: 'Все сообщения без изменений' },
   { value: 'COMPRESSION',    label: 'Сжатие',            description: 'LLM-саммари + последние N' },
   { value: 'SLIDING_WINDOW', label: 'Скользящее окно',   description: 'Только последние N сообщений' },
-  { value: 'STICKY_FACTS',   label: 'Sticky Facts',      description: 'Ключевые факты + последние N' },
   { value: 'BRANCHING',      label: 'Ветвление',          description: 'Чекпоинты и независимые ветки' },
 ]
 
