@@ -53,7 +53,14 @@ public class AgentTaskStateManager {
             sb.append("- Пропуск этапов запрещён: NONE→EXECUTION, PLANNING→DONE и т.д.\n");
 
             if (e.getPhase() == TaskPhase.PLANNING && !e.isPlanApproved()) {
-                sb.append("- Ожидай подтверждения плана от пользователя перед началом реализации\n");
+                sb.append("\nСТОП: план не подтверждён пользователем.\n");
+                sb.append("Запрещено: писать код, начинать реализацию, переходить к следующему этапу.\n");
+                sb.append("Обязательно: покажи план (если ещё не показан) и явно спроси подтверждение, например: «Подтверждаете план? Могу приступить к реализации.»\n");
+            }
+            if (e.getPhase() == TaskPhase.EXECUTION) {
+                sb.append("\nСТОП: нельзя объявлять задачу завершённой без валидации.\n");
+                sb.append("Запрещено: говорить «готово», «задача выполнена», переходить к DONE.\n");
+                sb.append("Обязательно: предложи протестировать или проверить результат перед завершением.\n");
             }
             if (StringUtils.hasText(e.getBlockedTransitionReason())) {
                 sb.append("- Последняя попытка перехода отклонена: ").append(e.getBlockedTransitionReason()).append("\n");
