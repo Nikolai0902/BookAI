@@ -261,3 +261,29 @@ frontend/src/
 - Use `@RequiredArgsConstructor` on all `@Component`, `@RestController`, `@Service` classes instead of explicit constructors.
 - For fields injected via `@Value`, annotate the field (not the constructor parameter) — `lombok.config` is configured to copy `@Value` to generated constructor parameters.
 - Do **not** use Lombok on `record` classes — records already generate their own constructors and accessors.
+- JPA entity classes use `@Getter @NoArgsConstructor` (Lombok) + an explicit constructor for creation + an `update()` method for mutations. No `@Setter` — mutation is always explicit.
+
+## Record and Nested Class Conventions
+
+- Use Java `record` for all DTOs in `api/` and for internal result/snapshot types. No Lombok on records.
+- If a helper type (result, extracted data, parsed value) is used **only within one class**, declare it as a `public record` nested inside that class rather than a separate file.
+  - Example: `LastExchangeAnalyzer.AnalysisResult` — only consumed by `LastExchangeAnalyzer` itself.
+- If a record is used across multiple packages or exposed via API/response, keep it as a top-level file in `api/`.
+  - Example: `TaskStateSnapshot`, `MemoryLayersSnapshot` — used in controller, handler, and response DTO.
+
+## Javadoc Conventions
+
+- Все Javadoc-комментарии к классам и методам пишутся **на русском языке**.
+- Javadoc обязателен для всех `public` классов и `public`/`protected` методов.
+- Описание класса: что делает, в каком слое находится, с чем взаимодействует.
+- Описание метода: что делает, когда вызывается, что возвращает. Теги `@param` и `@return` — если параметры неочевидны.
+- Приватные вспомогательные методы — без Javadoc, если назначение понятно из имени.
+
+## Design Principles
+
+При проектировании новых компонентов и рефакторинге существующих придерживаться принципов:
+
+- **SOLID** — каждый класс имеет одну ответственность; зависимости через интерфейсы и конструктор; открыт для расширения, закрыт для изменения.
+- **DRY** — не дублировать логику; если два места делают одно и то же, вынести в общий компонент.
+- **KISS** — предпочитать простое решение сложному; не добавлять абстракции без явной необходимости.
+- **YAGNI** — не реализовывать то, что не нужно прямо сейчас; никаких «пригодится в будущем» структур.

@@ -2,6 +2,8 @@ package io.book.ai.controller;
 
 import io.book.ai.api.AgentChatRequest;
 import io.book.ai.api.AgentChatResponse;
+import io.book.ai.api.SessionMessageDto;
+import io.book.ai.api.SessionSummary;
 import io.book.ai.api.branch.BranchCreateRequest;
 import io.book.ai.api.branch.BranchInfo;
 import io.book.ai.handler.agent.AgentBook;
@@ -32,5 +34,15 @@ public class AgentController {
     @GetMapping("/branch/{rootSessionId}")
     public List<BranchInfo> listBranches(@PathVariable String rootSessionId) {
         return sessionStore.listBranches(rootSessionId);
+    }
+
+    @GetMapping("/sessions")
+    public List<SessionSummary> getRecentSessions(@RequestParam(defaultValue = "5") int limit) {
+        return sessionStore.findRecentSessions(Math.min(limit, 20));
+    }
+
+    @GetMapping("/sessions/{sessionId}/messages")
+    public List<SessionMessageDto> getSessionMessages(@PathVariable String sessionId) {
+        return sessionStore.getSessionMessages(sessionId);
     }
 }

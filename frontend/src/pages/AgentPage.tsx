@@ -5,6 +5,8 @@ import ModelInfo from '../components/Sidebar/ModelInfo'
 import StrategySelector from '../components/Agent/StrategySelector'
 import BranchingPanel from '../components/Agent/BranchingPanel'
 import MemoryLayersPanel from '../components/Agent/MemoryLayersPanel'
+import TaskStatePanel from '../components/Agent/TaskStatePanel'
+import RecentSessionsPanel from '../components/Agent/RecentSessionsPanel'
 import ProfileSelector from '../components/Agent/ProfileSelector'
 import { useAgentStore } from '../store/useAgentStore'
 import { sendAgentMessage } from '../api/agentApi'
@@ -150,7 +152,7 @@ export default function AgentPage() {
     sessionId, model, isLoading, error, messages, strategy, memoryEnabled, profileId,
     addMessage, setSessionId, setLoading, setError, setModel,
     clearSession, setTokenTotals, setCompressionStats,
-    setMemoryLayersSnapshot, setMemoryEnabled,
+    setMemoryLayersSnapshot, setMemoryEnabled, setTaskState,
   } = useAgentStore()
 
   const handleSend = async () => {
@@ -192,6 +194,7 @@ export default function AgentPage() {
         setCompressionStats({ recentMessagesCount: res.recentMessagesCount, summarized: res.summarizedMessagesCount })
       }
       setMemoryLayersSnapshot(res.memoryLayersSnapshot ?? null)
+      setTaskState(res.taskState ?? null)
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       setError(msg ? `Ошибка: ${msg}` : 'Ошибка при обращении к агенту')
@@ -276,6 +279,8 @@ export default function AgentPage() {
         <CompressionPanel />
         <BranchingPanel />
         <MemoryLayersPanel />
+        <TaskStatePanel />
+        <RecentSessionsPanel />
 
         <TokenStatsPanel />
 

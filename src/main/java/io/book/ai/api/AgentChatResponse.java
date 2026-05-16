@@ -16,5 +16,6 @@ public record AgentChatResponse(
         int summarizedMessagesCount,
         /** DB-идентификатор сохранённого ответа ассистента; используется как checkpointMessageId при ветвлении. */
         long lastMessageId,
-        MemoryLayersSnapshot memoryLayersSnapshot
+        MemoryLayersSnapshot memoryLayersSnapshot,
+        TaskStateSnapshot taskState
 ) {}

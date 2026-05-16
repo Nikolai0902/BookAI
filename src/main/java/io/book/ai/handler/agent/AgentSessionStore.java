@@ -1,5 +1,7 @@
 package io.book.ai.handler.agent;
 
+import io.book.ai.api.SessionMessageDto;
+import io.book.ai.api.SessionSummary;
 import io.book.ai.api.branch.BranchInfo;
 import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.repository.AgentBranchRepository;
@@ -244,6 +246,53 @@ public class AgentSessionStore {
     @Transactional
     public void clearLongTermMemory(String profileId) {
         longTermRepository.deleteByProfileId(profileId);
+    }
+
+    /**
+     * Возвращает список последних сессий, отсортированных по времени последней активности.
+     * Для каждой сессии формируется превью последнего сообщения и количество ходов.
+     *
+     * @param limit максимальное количество сессий (не более 20)
+     * @return список кратких описаний сессий от новых к старым
+     */
+    public List<SessionSummary> findRecentSessions(int limit) {
+        List<String> sessionIds = repository.findTop50BySummaryFalseOrderByCreatedAtDesc()
+                .stream()
+                .map(AgentMessageEntity::getSessionId)
+                .distinct()
+                .limit(limit)
+                .toList();
+
+        return sessionIds.stream().map(sessionId -> {
+            AgentMessageEntity last = repository
+                    .findTopBySessionIdAndSummaryFalseOrderByCreatedAtDesc(sessionId)
+                    .orElse(null);
+            int turnCount = (int) (repository.countBySessionIdAndSummaryFalse(sessionId) / 2);
+            String preview = last != null ? truncate(last.getContent(), 80) : "";
+            java.time.Instant lastAt = last != null ? last.getCreatedAt() : java.time.Instant.now();
+            return new SessionSummary(sessionId, preview, lastAt, turnCount);
+        }).toList();
+    }
+
+    /**
+     * Загружает все сообщения сессии (без саммари) для отображения истории разговора
+     * при переключении на ранее сохранённую сессию.
+     *
+     * @param sessionId идентификатор сессии
+     * @return список DTO сообщений в хронологическом порядке
+     */
+    public List<SessionMessageDto> getSessionMessages(String sessionId) {
+        return loadRawHistory(sessionId).stream()
+                .map(e -> new SessionMessageDto(
+                        e.getRole(), e.getContent(),
+                        e.getInputTokens(), e.getOutputTokens(), e.getId()))
+                .toList();
+    }
+
+    private static String truncate(String text, int max) {
+        if (text == null || text.isBlank()) return "";
+        String clean = text.replace("\n", " ").trim();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "…";
     }
 
     private BranchInfo toBranchInfo(AgentBranchEntity e) {

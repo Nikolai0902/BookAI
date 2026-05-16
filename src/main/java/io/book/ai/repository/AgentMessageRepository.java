@@ -38,4 +38,17 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessageEntity
     @Query("SELECT m FROM AgentMessageEntity m WHERE m.sessionId = :sessionId AND m.id <= :upToId AND m.summary = false ORDER BY m.createdAt")
     List<AgentMessageEntity> findBySessionIdUpToIdOrderByCreatedAt(@Param("sessionId") String sessionId,
                                                                     @Param("upToId") Long upToId);
+
+    /**
+     * Возвращает последние {@code N} сообщений по всем сессиям (без саммари),
+     * отсортированных от новых к старым. Используется для построения списка
+     * недавних сессий — достаточно взять первые 50 и дедублировать по sessionId.
+     */
+    List<AgentMessageEntity> findTop50BySummaryFalseOrderByCreatedAtDesc();
+
+    /**
+     * Возвращает последнее реальное сообщение сессии. Используется для получения
+     * превью и времени последней активности при формировании списка сессий.
+     */
+    Optional<AgentMessageEntity> findTopBySessionIdAndSummaryFalseOrderByCreatedAtDesc(String sessionId);
 }

@@ -1,7 +1,6 @@
 package io.book.ai.handler.agent;
 
 import io.book.ai.api.MemoryLayersSnapshot;
-import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.repository.UserProfileRepository;
 import io.book.ai.repository.entity.AgentLongTermMemoryEntity;
 import io.book.ai.repository.entity.ResponseFormat;
@@ -16,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+
 
 /**
  * Управляет тремя слоями памяти агента. Работает поверх любой контекстной стратегии.
@@ -32,7 +33,6 @@ public class AgentMemoryManager {
     public static final String DEFAULT_PROFILE = "default";
 
     private final AgentSessionStore sessionStore;
-    private final FactsExtractor factsExtractor;
     private final AgentLongTermMemoryExtractor longTermExtractor;
     private final UserProfileRepository profileRepository;
 
@@ -88,14 +88,20 @@ public class AgentMemoryManager {
     }
 
     /**
-     * Обновляет рабочую и долговременную память по последнему обмену.
-     * Вызывается после сохранения ответа ассистента.
+     * Сохраняет обновлённые факты рабочей памяти и при необходимости запускает обновление
+     * долговременной памяти. Факты передаются уже извлечёнными — анализ последнего обмена
+     * выполнен снаружи единственным вызовом {@link LastExchangeAnalyzer}.
      *
-     * @param lastExchange последние два сообщения: user + assistant
+     * @param sessionId идентификатор сессии
+     * @param profileId идентификатор профиля пользователя
+     * @param facts     обновлённый блок рабочей памяти в формате «key: value»; если {@code null},
+     *                  рабочая память не изменяется
      * @return снимок всех трёх слоёв памяти для включения в ответ
      */
-    public MemoryLayersSnapshot updateMemory(String sessionId, String profileId, List<Message> lastExchange) {
-        updateWorkingMemory(sessionId, lastExchange);
+    public MemoryLayersSnapshot updateMemory(String sessionId, String profileId, String facts) {
+        if (StringUtils.hasText(facts)) {
+            sessionStore.saveFacts(sessionId, facts);
+        }
         long turnNumber = sessionStore.getMessageCount(sessionId) / 2;
         if (turnNumber % longTermUpdateInterval == 0) {
             String workingMemory = sessionStore.getFacts(sessionId);
@@ -104,14 +110,6 @@ public class AgentMemoryManager {
             }
         }
         return buildSnapshot(sessionId, profileId);
-    }
-
-    private void updateWorkingMemory(String sessionId, List<Message> lastExchange) {
-        String existing = sessionStore.getFacts(sessionId);
-        String updated = factsExtractor.extract(lastExchange, existing);
-        if (StringUtils.hasText(updated)) {
-            sessionStore.saveFacts(sessionId, updated);
-        }
     }
 
     private void updateLongTermMemory(String profileId, String workingMemory) {

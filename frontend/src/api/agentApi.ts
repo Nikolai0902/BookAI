@@ -32,6 +32,15 @@ export interface MemoryLayersSnapshot {
   longTermMemory: Record<string, string>
 }
 
+export type TaskPhase = 'NONE' | 'PLANNING' | 'EXECUTION' | 'VALIDATION' | 'DONE'
+
+export interface TaskStateSnapshot {
+  phase: TaskPhase
+  currentStep: string | null
+  expectedAction: string | null
+  paused: boolean
+}
+
 export interface AgentChatResponse {
   sessionId: string
   reply: string
@@ -46,6 +55,7 @@ export interface AgentChatResponse {
   summarizedMessagesCount: number
   lastMessageId: number
   memoryLayersSnapshot: MemoryLayersSnapshot
+  taskState: TaskStateSnapshot | null
 }
 
 export interface BranchCreateRequest {
@@ -106,4 +116,37 @@ export async function updateProfile(profileId: string, profile: Partial<UserProf
 
 export async function deleteProfile(profileId: string): Promise<void> {
   await axios.delete(`/api/profiles/${profileId}`)
+}
+
+export interface SessionSummary {
+  sessionId: string
+  lastMessage: string
+  lastMessageAt: string
+  turnCount: number
+}
+
+export interface SessionMessageDto {
+  role: 'user' | 'assistant'
+  content: string
+  inputTokens?: number
+  outputTokens?: number
+  messageId?: number
+}
+
+export async function getRecentSessions(limit = 5): Promise<SessionSummary[]> {
+  const { data } = await axios.get<SessionSummary[]>(`/api/agent/sessions?limit=${limit}`)
+  return data
+}
+
+export async function getSessionMessages(sessionId: string): Promise<SessionMessageDto[]> {
+  const { data } = await axios.get<SessionMessageDto[]>(`/api/agent/sessions/${sessionId}/messages`)
+  return data
+}
+
+export async function pauseTask(sessionId: string): Promise<void> {
+  await axios.put(`/api/task/${sessionId}/pause`)
+}
+
+export async function resumeTask(sessionId: string): Promise<void> {
+  await axios.put(`/api/task/${sessionId}/resume`)
 }
