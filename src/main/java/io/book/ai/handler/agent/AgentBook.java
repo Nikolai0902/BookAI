@@ -49,6 +49,7 @@ public class AgentBook {
     private final AgentMemoryManager memoryManager;
     private final AgentTaskStateManager taskStateManager;
     private final LastExchangeAnalyzer lastExchangeAnalyzer;
+    private final AgentInvariantManager invariantManager;
 
     @Value("${anthropic.model}")
     private final String defaultModel;
@@ -99,21 +100,25 @@ public class AgentBook {
     }
 
     /**
-     * Собирает системный промпт из четырёх слоёв в порядке приоритета:
+     * Собирает системный промпт из пяти слоёв в порядке приоритета:
      * <ol>
-     *   <li>Профиль пользователя — стиль общения, формат ответа, ограничения.</li>
-     *   <li>Слои памяти — рабочая память сессии и долговременная память профиля (только если {@code memoryEnabled}).</li>
+     *   <li>Профиль пользователя — стиль общения, формат ответа, мягкие ограничения.</li>
+     *   <li>Инварианты — жёсткие правила профиля, которые нельзя нарушать.</li>
+     *   <li>Слои памяти — рабочая память сессии и долговременная память (только если {@code memoryEnabled}).</li>
      *   <li>Системный промпт стратегии контекста — например, саммари для COMPRESSION.</li>
      *   <li>Состояние задачи — текущая фаза, шаг и ожидаемое действие.</li>
      * </ol>
      * Блоки, вернувшие {@code null}, пропускаются.
      */
     private String buildSystemPrompt(String sessionId, String profileId, boolean memoryEnabled, ContextResult ctx) {
-        String profilePrompt   = memoryManager.buildProfileSystemPrompt(profileId);
-        String memoryPrompt    = memoryEnabled ? memoryManager.buildMemoryLayersPrompt(sessionId, profileId) : null;
-        String taskStatePrompt = taskStateManager.buildTaskStatePrompt(sessionId);
+        String profilePrompt    = memoryManager.buildProfileSystemPrompt(profileId);
+        String invariantsPrompt = invariantManager.buildInvariantsSystemPrompt(profileId);
+        String memoryPrompt     = memoryEnabled ? memoryManager.buildMemoryLayersPrompt(sessionId, profileId) : null;
+        String taskStatePrompt  = taskStateManager.buildTaskStatePrompt(sessionId);
         return mergeSystemPrompts(
-                mergeSystemPrompts(mergeSystemPrompts(profilePrompt, memoryPrompt), ctx.systemPrompt()),
+                mergeSystemPrompts(
+                        mergeSystemPrompts(mergeSystemPrompts(profilePrompt, invariantsPrompt), memoryPrompt),
+                        ctx.systemPrompt()),
                 taskStatePrompt);
     }
 

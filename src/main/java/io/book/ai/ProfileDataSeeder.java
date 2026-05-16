@@ -1,5 +1,6 @@
 package io.book.ai;
 
+import io.book.ai.handler.agent.AgentInvariantManager;
 import io.book.ai.repository.UserProfileRepository;
 import io.book.ai.repository.entity.UserProfileEntity;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import static io.book.ai.repository.entity.ResponseFormat.*;
 public class ProfileDataSeeder implements CommandLineRunner {
 
     private final UserProfileRepository profileRepository;
+    private final AgentInvariantManager invariantManager;
 
     @Override
     public void run(String... args) {
@@ -26,5 +28,17 @@ public class ProfileDataSeeder implements CommandLineRunner {
                 new UserProfileEntity("dev", "Dev Profile", TECHNICAL, MARKDOWN,
                         "Include code examples. Prefer Java.")
         ));
+
+        invariantManager.addInvariant("dev", "архитектура",
+                "Java 25 + Spring Boot 4. Не предлагать другие языки или JVM-фреймворки.");
+        invariantManager.addInvariant("dev", "архитектура",
+                "Только REST API. GraphQL и gRPC не предлагать без явного согласования.");
+        invariantManager.addInvariant("dev", "стек",
+                "Maven для сборки. Gradle не предлагать.");
+        invariantManager.addInvariant("dev", "стек",
+                "H2 в dev-окружении, PostgreSQL в prod. NoSQL не предлагать.");
+
+        invariantManager.addInvariant("alice", "бизнес",
+                "Не предлагать платные инструменты и сервисы без обоснования стоимости.");
     }
 }

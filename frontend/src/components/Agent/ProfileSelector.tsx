@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAgentStore } from '../../store/useAgentStore'
-import { fetchProfiles, updateProfile } from '../../api/agentApi'
-import type { UserProfile, CommunicationStyle, ResponseFormat } from '../../api/agentApi'
+import { fetchProfiles, updateProfile, getInvariants, addInvariant, deleteInvariant } from '../../api/agentApi'
+import type { UserProfile, CommunicationStyle, ResponseFormat, AgentInvariant } from '../../api/agentApi'
 
 const STYLES: CommunicationStyle[] = ['FORMAL', 'CASUAL', 'TECHNICAL', 'CONCISE']
 const FORMATS: ResponseFormat[] = ['PLAIN', 'MARKDOWN', 'BULLETS', 'DETAILED']
+const INVARIANT_CATEGORIES = ['архитектура', 'стек', 'бизнес', 'технические']
 
 const STYLE_LABELS: Record<CommunicationStyle, string> = {
   FORMAL: 'Formal',
@@ -18,6 +19,105 @@ const FORMAT_LABELS: Record<ResponseFormat, string> = {
   MARKDOWN: 'Markdown',
   BULLETS: 'Bullet points',
   DETAILED: 'Detailed',
+}
+
+function InvariantsSection({ profileId }: { profileId: string }) {
+  const [invariants, setInvariants] = useState<AgentInvariant[]>([])
+  const [adding, setAdding] = useState(false)
+  const [newCategory, setNewCategory] = useState(INVARIANT_CATEGORIES[0])
+  const [newRule, setNewRule] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    getInvariants(profileId).then(setInvariants).catch(console.error)
+  }, [profileId])
+
+  const byCategory = invariants.reduce<Record<string, AgentInvariant[]>>((acc, inv) => {
+    ;(acc[inv.category] ??= []).push(inv)
+    return acc
+  }, {})
+
+  const handleAdd = async () => {
+    if (!newRule.trim()) return
+    setSaving(true)
+    try {
+      const created = await addInvariant(profileId, { category: newCategory, ruleText: newRule.trim() })
+      setInvariants((prev) => [...prev, created])
+      setNewRule('')
+      setAdding(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    await deleteInvariant(profileId, id)
+    setInvariants((prev) => prev.filter((i) => i.id !== id))
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-400 uppercase tracking-wider">Invariants</label>
+        <button
+          onClick={() => setAdding((v) => !v)}
+          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          {adding ? 'Cancel' : '+ Add'}
+        </button>
+      </div>
+
+      {adding && (
+        <div className="flex flex-col gap-2 p-3 bg-gray-800 rounded-md border border-gray-700">
+          <select
+            value={newCategory}
+            onChange={(e) => setNewCategory(e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+          >
+            {INVARIANT_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <textarea
+            value={newRule}
+            onChange={(e) => setNewRule(e.target.value)}
+            rows={2}
+            placeholder="Текст правила..."
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={saving || !newRule.trim()}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs text-white disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      )}
+
+      {Object.keys(byCategory).length === 0 && !adding && (
+        <p className="text-xs text-gray-600 italic">Нет инвариантов</p>
+      )}
+
+      {Object.entries(byCategory).map(([cat, items]) => (
+        <div key={cat}>
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">[{cat}]</div>
+          {items.map((inv) => (
+            <div key={inv.id} className="flex items-start gap-2 group py-0.5">
+              <span className="text-xs text-gray-300 flex-1 leading-relaxed">{inv.ruleText}</span>
+              <button
+                onClick={() => handleDelete(inv.id)}
+                className="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0 text-xs mt-0.5"
+                title="Удалить инвариант"
+              >
+                🗑
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function ProfileModal({
@@ -53,8 +153,8 @@ function ProfileModal({
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-96 flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-96 flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
           <h2 className="text-sm font-semibold text-white">Profile: {profile.displayName}</h2>
           <button
             onClick={onClose}
@@ -64,7 +164,7 @@ function ProfileModal({
           </button>
         </div>
 
-        <div className="flex flex-col gap-4 px-5 py-4 text-sm">
+        <div className="flex flex-col gap-4 px-5 py-4 text-sm overflow-y-auto">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Style</label>
             <select
@@ -101,9 +201,13 @@ function ProfileModal({
               className="bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
             />
           </div>
+
+          <div className="border-t border-gray-800 pt-3">
+            <InvariantsSection profileId={profile.profileId} />
+          </div>
         </div>
 
-        <div className="flex gap-2 justify-end px-5 py-4 border-t border-gray-800">
+        <div className="flex gap-2 justify-end px-5 py-4 border-t border-gray-800 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800"

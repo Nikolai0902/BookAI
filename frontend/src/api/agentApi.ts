@@ -133,6 +133,38 @@ export interface SessionMessageDto {
   messageId?: number
 }
 
+export interface AgentInvariant {
+  id: number
+  profileId: string
+  category: string
+  ruleText: string
+  createdAt: string
+}
+
+export interface AgentInvariantRequest {
+  category: string
+  ruleText: string
+}
+
+export async function getInvariants(profileId: string): Promise<AgentInvariant[]> {
+  const { data } = await axios.get<AgentInvariant[]>(`/api/profiles/${profileId}/invariants`)
+  return data
+}
+
+export async function addInvariant(profileId: string, req: AgentInvariantRequest): Promise<AgentInvariant> {
+  const { data } = await axios.post<AgentInvariant>(`/api/profiles/${profileId}/invariants`, req)
+  return data
+}
+
+export async function updateInvariant(profileId: string, id: number, req: AgentInvariantRequest): Promise<AgentInvariant> {
+  const { data } = await axios.put<AgentInvariant>(`/api/profiles/${profileId}/invariants/${id}`, req)
+  return data
+}
+
+export async function deleteInvariant(profileId: string, id: number): Promise<void> {
+  await axios.delete(`/api/profiles/${profileId}/invariants/${id}`)
+}
+
 export async function getRecentSessions(limit = 5): Promise<SessionSummary[]> {
   const { data } = await axios.get<SessionSummary[]>(`/api/agent/sessions?limit=${limit}`)
   return data
