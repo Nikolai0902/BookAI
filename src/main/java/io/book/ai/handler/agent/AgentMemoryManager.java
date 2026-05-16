@@ -2,7 +2,10 @@ package io.book.ai.handler.agent;
 
 import io.book.ai.api.MemoryLayersSnapshot;
 import io.book.ai.llm.AnthropicRequest.Message;
+import io.book.ai.repository.UserProfileRepository;
 import io.book.ai.repository.entity.AgentLongTermMemoryEntity;
+import io.book.ai.repository.entity.ResponseFormat;
+import io.book.ai.repository.entity.UserProfileEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -31,17 +34,37 @@ public class AgentMemoryManager {
     private final AgentSessionStore sessionStore;
     private final FactsExtractor factsExtractor;
     private final AgentLongTermMemoryExtractor longTermExtractor;
+    private final UserProfileRepository profileRepository;
 
-    @Value("${agent.memory.long-term-update-interval:7}")
+    @Value("${agent.memory.long-term-update-interval:3}")
     private int longTermUpdateInterval;
 
     /**
-     * Формирует блок памяти для system prompt. Вызывается до обращения к LLM.
+     * Формирует блок предпочтений профиля для system prompt.
+     * Вызывается всегда, независимо от флага memoryEnabled.
+     * Возвращает {@code null} если профиль не найден.
+     */
+    public String buildProfileSystemPrompt(String profileId) {
+        return profileRepository.findById(profileId).map(p -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[User Profile: ").append(p.getDisplayName()).append("]\n");
+            sb.append("Communication style: ").append(p.getStyle().name().toLowerCase()).append("\n");
+            sb.append("Response format: ").append(formatResponseFormat(p.getResponseFormat())).append("\n");
+            if (StringUtils.hasText(p.getConstraints())) {
+                sb.append("Constraints: ").append(p.getConstraints()).append("\n");
+            }
+            return sb.toString();
+        }).orElse(null);
+    }
+
+    /**
+     * Формирует блок рабочей и долговременной памяти для system prompt.
+     * Вызывается только когда memoryEnabled=true.
      * Возвращает {@code null} если обе памяти пусты.
      */
-    public String buildMemorySystemPrompt(String sessionId) {
+    public String buildMemoryLayersPrompt(String sessionId, String profileId) {
         String working = sessionStore.getFacts(sessionId);
-        List<AgentLongTermMemoryEntity> ltm = sessionStore.getLongTermMemory(DEFAULT_PROFILE);
+        List<AgentLongTermMemoryEntity> ltm = sessionStore.getLongTermMemory(profileId);
 
         StringBuilder sb = new StringBuilder();
 
@@ -71,17 +94,16 @@ public class AgentMemoryManager {
      * @param lastExchange последние два сообщения: user + assistant
      * @return снимок всех трёх слоёв памяти для включения в ответ
      */
-    public MemoryLayersSnapshot updateMemory(String sessionId, List<Message> lastExchange) {
+    public MemoryLayersSnapshot updateMemory(String sessionId, String profileId, List<Message> lastExchange) {
         updateWorkingMemory(sessionId, lastExchange);
         long turnNumber = sessionStore.getMessageCount(sessionId) / 2;
         if (turnNumber % longTermUpdateInterval == 0) {
-            // Читаем рабочую память ПОСЛЕ её обновления — она суммирует всю сессию
             String workingMemory = sessionStore.getFacts(sessionId);
             if (StringUtils.hasText(workingMemory)) {
-                updateLongTermMemory(workingMemory);
+                updateLongTermMemory(profileId, workingMemory);
             }
         }
-        return buildSnapshot(sessionId);
+        return buildSnapshot(sessionId, profileId);
     }
 
     private void updateWorkingMemory(String sessionId, List<Message> lastExchange) {
@@ -92,8 +114,8 @@ public class AgentMemoryManager {
         }
     }
 
-    private void updateLongTermMemory(String workingMemory) {
-        List<AgentLongTermMemoryEntity> current = sessionStore.getLongTermMemory(DEFAULT_PROFILE);
+    private void updateLongTermMemory(String profileId, String workingMemory) {
+        List<AgentLongTermMemoryEntity> current = sessionStore.getLongTermMemory(profileId);
         String existingFormatted = current.isEmpty() ? null : current.stream()
                 .map(e -> e.getCategory() + "|" + e.getKey() + ": " + e.getValue())
                 .collect(Collectors.joining("\n"));
@@ -109,15 +131,15 @@ public class AgentMemoryManager {
                     String[] kv = parts[1].split(": ", 2);
                     if (parts.length == 2 && kv.length == 2) {
                         sessionStore.upsertLongTermFact(
-                                DEFAULT_PROFILE, parts[0].trim(), kv[0].trim(), kv[1].trim());
+                                profileId, parts[0].trim(), kv[0].trim(), kv[1].trim());
                     }
                 });
     }
 
-    public MemoryLayersSnapshot buildSnapshot(String sessionId) {
+    public MemoryLayersSnapshot buildSnapshot(String sessionId, String profileId) {
         int shortTermCount = (int) sessionStore.getMessageCount(sessionId);
         String working = sessionStore.getFacts(sessionId);
-        List<AgentLongTermMemoryEntity> ltm = sessionStore.getLongTermMemory(DEFAULT_PROFILE);
+        List<AgentLongTermMemoryEntity> ltm = sessionStore.getLongTermMemory(profileId);
 
         Map<String, String> longTermByCategory = ltm.stream()
                 .collect(Collectors.groupingBy(
@@ -128,5 +150,14 @@ public class AgentMemoryManager {
                                 Collectors.joining("\n"))));
 
         return new MemoryLayersSnapshot(shortTermCount, working, longTermByCategory);
+    }
+
+    private String formatResponseFormat(ResponseFormat format) {
+        return switch (format) {
+            case PLAIN -> "plain text";
+            case MARKDOWN -> "markdown";
+            case BULLETS -> "bullet points";
+            case DETAILED -> "detailed explanations";
+        };
     }
 }

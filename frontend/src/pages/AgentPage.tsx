@@ -5,6 +5,7 @@ import ModelInfo from '../components/Sidebar/ModelInfo'
 import StrategySelector from '../components/Agent/StrategySelector'
 import BranchingPanel from '../components/Agent/BranchingPanel'
 import MemoryLayersPanel from '../components/Agent/MemoryLayersPanel'
+import ProfileSelector from '../components/Agent/ProfileSelector'
 import { useAgentStore } from '../store/useAgentStore'
 import { sendAgentMessage } from '../api/agentApi'
 
@@ -146,7 +147,7 @@ function TokenStatsPanel() {
 export default function AgentPage() {
   const [input, setInput] = useState('')
   const {
-    sessionId, model, isLoading, error, messages, strategy, memoryEnabled,
+    sessionId, model, isLoading, error, messages, strategy, memoryEnabled, profileId,
     addMessage, setSessionId, setLoading, setError, setModel,
     clearSession, setTokenTotals, setCompressionStats,
     setMemoryLayersSnapshot, setMemoryEnabled,
@@ -168,6 +169,7 @@ export default function AgentPage() {
         model: model || null,
         strategy,
         memoryEnabled,
+        profileId,
       })
       setSessionId(res.sessionId)
       addMessage({
@@ -248,6 +250,8 @@ export default function AgentPage() {
           </button>
         </div>
 
+        <ProfileSelector />
+
         <StrategySelector />
 
         <div className="flex flex-col gap-1.5">
@@ -284,6 +288,10 @@ export default function AgentPage() {
       </aside>
 
       <main className="flex flex-col flex-1 overflow-hidden">
+        <div className="px-6 py-2 border-b border-gray-800 text-xs text-gray-500 flex items-center gap-2 shrink-0">
+          <span>Profile:</span>
+          <span className="text-gray-300 font-medium">{profileId}</span>
+        </div>
         <ChatHistory />
         {error && (
           <div className="px-6 py-2 text-sm text-red-400 bg-red-950/30 border-t border-red-900">{error}</div>

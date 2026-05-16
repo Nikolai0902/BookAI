@@ -6,12 +6,24 @@ export type ContextStrategyType =
   | 'SLIDING_WINDOW'
   | 'BRANCHING'
 
+export type CommunicationStyle = 'FORMAL' | 'CASUAL' | 'TECHNICAL' | 'CONCISE'
+export type ResponseFormat = 'PLAIN' | 'MARKDOWN' | 'BULLETS' | 'DETAILED'
+
+export interface UserProfile {
+  profileId: string
+  displayName: string
+  style: CommunicationStyle
+  responseFormat: ResponseFormat
+  constraints: string | null
+}
+
 export interface AgentChatRequest {
   message: string
   sessionId?: string
   model?: string | null
   strategy?: ContextStrategyType
   memoryEnabled?: boolean
+  profileId?: string
 }
 
 export interface MemoryLayersSnapshot {
@@ -58,6 +70,7 @@ export async function sendAgentMessage(req: AgentChatRequest): Promise<AgentChat
   }
   if (req.sessionId) body.sessionId = req.sessionId
   if (req.model) body.model = req.model
+  if (req.profileId) body.profileId = req.profileId
   const { data } = await axios.post<AgentChatResponse>('/api/agent/chat', body)
   return data
 }
@@ -72,6 +85,25 @@ export async function listBranches(rootSessionId: string): Promise<BranchInfo[]>
   return data
 }
 
-export async function clearLongTermMemory(): Promise<void> {
-  await axios.delete('/api/memory/longterm')
+export async function clearLongTermMemory(profileId = 'default'): Promise<void> {
+  await axios.delete(`/api/memory/longterm?profileId=${profileId}`)
+}
+
+export async function fetchProfiles(): Promise<UserProfile[]> {
+  const { data } = await axios.get<UserProfile[]>('/api/profiles')
+  return data
+}
+
+export async function createProfile(profile: UserProfile): Promise<UserProfile> {
+  const { data } = await axios.post<UserProfile>('/api/profiles', profile)
+  return data
+}
+
+export async function updateProfile(profileId: string, profile: Partial<UserProfile>): Promise<UserProfile> {
+  const { data } = await axios.put<UserProfile>(`/api/profiles/${profileId}`, profile)
+  return data
+}
+
+export async function deleteProfile(profileId: string): Promise<void> {
+  await axios.delete(`/api/profiles/${profileId}`)
 }

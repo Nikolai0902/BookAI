@@ -62,15 +62,18 @@ public class AgentBook {
     public AgentChatResponse chat(AgentChatRequest request) {
         String sessionId = StringUtils.hasText(request.sessionId()) ? request.sessionId() : UUID.randomUUID().toString();
         String model = StringUtils.hasText(request.model()) ? request.model() : defaultModel;
+        String profileId = StringUtils.hasText(request.profileId()) ? request.profileId() : AgentMemoryManager.DEFAULT_PROFILE;
         ContextStrategyType strategy = request.strategy() != null ? request.strategy() : ContextStrategyType.FULL_HISTORY;
 
         boolean memoryEnabled = !Boolean.FALSE.equals(request.memoryEnabled());
 
         sessionStore.saveMessage(sessionId, ROLE_USER, request.message());
 
-        String memoryPrompt = memoryEnabled ? memoryManager.buildMemorySystemPrompt(sessionId) : null;
+        String profilePrompt = memoryManager.buildProfileSystemPrompt(profileId);
+        String memoryPrompt = memoryEnabled ? memoryManager.buildMemoryLayersPrompt(sessionId, profileId) : null;
         ContextResult ctx = orchestrator.buildContext(strategy, sessionId, model);
-        String combinedSystemPrompt = mergeSystemPrompts(memoryPrompt, ctx.systemPrompt());
+        String combinedSystemPrompt = mergeSystemPrompts(
+                mergeSystemPrompts(profilePrompt, memoryPrompt), ctx.systemPrompt());
 
         LlmResult result = callLlm(model, ctx.messages(), sessionId, combinedSystemPrompt);
 
@@ -81,8 +84,8 @@ public class AgentBook {
                 new Message(ROLE_USER, request.message()),
                 new Message(ROLE_ASSISTANT, result.text()));
         MemoryLayersSnapshot memorySnapshot = memoryEnabled
-                ? memoryManager.updateMemory(sessionId, lastExchange)
-                : memoryManager.buildSnapshot(sessionId);
+                ? memoryManager.updateMemory(sessionId, profileId, lastExchange)
+                : memoryManager.buildSnapshot(sessionId, profileId);
 
         return buildResponse(sessionId, result, strategy, ctx, lastMessageId, memorySnapshot);
     }

@@ -36,6 +36,7 @@ interface AgentStore {
   compressionStats: CompressionStats | null
   memoryLayersSnapshot: MemoryLayersSnapshot | null
   branches: BranchInfo[]
+  profileId: string
   addMessage: (msg: ChatMessage) => void
   setSessionId: (id: string | null) => void
   setLoading: (v: boolean) => void
@@ -50,6 +51,7 @@ interface AgentStore {
   addBranch: (branch: BranchInfo) => void
   switchToBranch: (branchSessionId: string) => void
   clearSession: () => void
+  setProfileId: (id: string) => void
 }
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
@@ -64,6 +66,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   compressionStats: null,
   memoryLayersSnapshot: null,
   branches: [],
+  profileId: 'default',
   addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
   setSessionId: (id) => set({ sessionId: id || null }),
   setLoading: (isLoading) => set({ isLoading }),
@@ -97,5 +100,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     memoryLayersSnapshot: null,
     branches: [],
     strategy: 'FULL_HISTORY',
+    // profileId intentionally not reset
   }),
+  setProfileId: (profileId) => set({ profileId }),
 }))

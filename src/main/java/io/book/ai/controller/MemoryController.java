@@ -17,14 +17,16 @@ public class MemoryController {
     private final AgentSessionStore sessionStore;
 
     @GetMapping("/longterm")
-    public List<AgentLongTermMemoryEntity> getLongTermMemory() {
-        return sessionStore.getLongTermMemory(AgentMemoryManager.DEFAULT_PROFILE);
+    public List<AgentLongTermMemoryEntity> getLongTermMemory(
+            @RequestParam(defaultValue = AgentMemoryManager.DEFAULT_PROFILE) String profileId) {
+        return sessionStore.getLongTermMemory(profileId);
     }
 
     @DeleteMapping("/longterm")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void clearLongTermMemory() {
-        sessionStore.clearLongTermMemory(AgentMemoryManager.DEFAULT_PROFILE);
+    public void clearLongTermMemory(
+            @RequestParam(defaultValue = AgentMemoryManager.DEFAULT_PROFILE) String profileId) {
+        sessionStore.clearLongTermMemory(profileId);
     }
 
     @GetMapping("/working/{sessionId}")

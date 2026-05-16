@@ -204,3 +204,78 @@ Spring Boot приложение для автоматизации работы 
 #### Вывод
 
 До Task 11 агент помнил только то, что находилось в контекстном окне текущей сессии. После — у него есть явная двухуровневая память поверх любой стратегии: рабочая накапливает контекст задачи внутри сессии, долговременная переносит профиль пользователя между сессиями. Агент знает имя пользователя в новом разговоре не потому что «угадал» — это инфраструктурная гарантия: факт записан в БД и инжектирован в system prompt до первого слова.
+
+---
+
+### Task 12: Персонализация ассистента
+
+**Задача:** добавить персонализацию поверх модели памяти — именованные профили пользователей с индивидуальными предпочтениями. Каждый профиль получает свою долговременную память и определяет поведение ассистента.
+
+#### Профиль пользователя
+
+Профиль — это статическая конфигурация, хранящаяся в таблице `user_profiles`. Редактируется вручную через UI.
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `profileId` | String (PK) | Идентификатор профиля |
+| `displayName` | String | Отображаемое имя |
+| `style` | Enum | `FORMAL` / `CASUAL` / `TECHNICAL` / `CONCISE` |
+| `responseFormat` | Enum | `PLAIN` / `MARKDOWN` / `BULLETS` / `DETAILED` |
+| `constraints` | Text | Произвольные инструкции ассистенту |
+
+При старте приложения сидируются три профиля:
+
+| profileId | displayName | Style | Format | Constraints |
+|---|---|---|---|---|
+| `default` | Default | FORMAL | PLAIN | — |
+| `alice` | Alice - PM | CASUAL | BULLETS | Keep responses short, avoid technical jargon |
+| `dev` | Dev Profile | TECHNICAL | MARKDOWN | Include code examples. Prefer Java |
+
+#### Как профиль подключается к запросу
+
+`profileId` передаётся в `AgentChatRequest`. В `AgentBook.chat()` формируются два независимых блока:
+
+```
+AgentBook.chat(profileId, memoryEnabled)
+  ├── buildProfileSystemPrompt(profileId)      ← всегда, независимо от флага памяти
+  │     → [User Profile: Alice - PM]
+  │       Communication style: casual
+  │       Response format: bullet points
+  │       Constraints: Keep responses short...
+  │
+  └── buildMemoryLayersPrompt(sessionId, profileId)  ← только если memoryEnabled=true
+        → ## Долговременная память
+          ## Рабочая память (текущая сессия)
+```
+
+Разделение намеренное: предпочтения профиля — это конфигурация, а не память. Флаг **«Память»** управляет только накоплением и чтением рабочей/долговременной памяти, но не трогает настройки профиля.
+
+#### Независимость долговременной памяти по профилям
+
+Каждый профиль имеет свой namespace в `agent_long_term_memory` через `profile_id`. Факты, извлечённые в сессии профиля `alice`, недоступны профилю `dev` и наоборот.
+
+```
+GET /api/memory/longterm?profileId=alice   → факты alice
+GET /api/memory/longterm?profileId=dev     → факты dev (независимо)
+DELETE /api/memory/longterm?profileId=alice → очищает только alice
+```
+
+#### Что реализовано
+
+- `UserProfileEntity` — JPA-сущность (`user_profiles`), `CommunicationStyle` и `ResponseFormat` enum
+- `ProfileController` — CRUD эндпоинты `GET/POST/PUT/DELETE /api/profiles`
+- `ProfileDataSeeder` — `CommandLineRunner`, сидирует 3 профиля при каждом старте
+- `AgentMemoryManager` — разбит на `buildProfileSystemPrompt()` и `buildMemoryLayersPrompt()`
+- `AgentChatRequest` — добавлено поле `profileId`
+- `MemoryController` — добавлен `?profileId=` параметр к GET/DELETE `/api/memory/longterm`
+- UI: dropdown выбора профиля в сайдбаре с кнопкой ⚙ → модалка редактирования предпочтений
+- UI: при смене профиля диалог автоматически сбрасывается
+- UI: активный профиль отображается в шапке чата
+
+#### Интервал обновления долговременной памяти
+
+Снижен с 7 до 3 ходов (`agent.memory.long-term-update-interval=3`) — факты о пользователе (имя, предпочтения, упомянутые в диалоге) попадают в cross-session память быстрее.
+
+#### Вывод
+
+До Task 12 у всех сессий был единый глобальный профиль `"default"`. После — каждый профиль получает свою конфигурацию ассистента и независимую долговременную память. Переключение профиля меняет не только стиль ответов, но и весь накопленный контекст о пользователе: ассистент адаптируется к конкретному человеку, а не к абстрактному «пользователю системы».

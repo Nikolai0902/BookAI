@@ -8,7 +8,7 @@ agent:
     recent-messages-count: ${AGENT_RECENT_MESSAGES_COUNT:5}
     sliding-window-size: ${AGENT_SLIDING_WINDOW_SIZE:10}
   memory:
-    long-term-update-interval: ${AGENT_LONG_TERM_UPDATE_INTERVAL:7}
+    long-term-update-interval: ${AGENT_LONG_TERM_UPDATE_INTERVAL:3}
 
 spring:
   datasource:

@@ -20,6 +20,7 @@ export default function MemoryLayersPanel() {
   const snapshot = useAgentStore((s) => s.memoryLayersSnapshot)
   const messages = useAgentStore((s) => s.messages)
   const setMemoryLayersSnapshot = useAgentStore((s) => s.setMemoryLayersSnapshot)
+  const profileId = useAgentStore((s) => s.profileId)
   const [clearing, setClearing] = useState(false)
 
   if (messages.length === 0 || !snapshot) return null
@@ -29,7 +30,7 @@ export default function MemoryLayersPanel() {
   const handleClearLongTerm = async () => {
     setClearing(true)
     try {
-      await clearLongTermMemory()
+      await clearLongTermMemory(profileId)
       setMemoryLayersSnapshot({ ...snapshot, longTermMemory: {} })
     } finally {
       setClearing(false)
