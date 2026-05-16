@@ -51,13 +51,14 @@ public class LastExchangeAnalyzer {
             - VALIDATION: the user is testing, reviewing, or debugging
             - DONE: the task is explicitly completed or closed
             - NONE: no clear task is present, or the exchange is purely conversational
-            Output exactly 3 lines:
+            Output exactly 4 lines:
             phase: <PLANNING|EXECUTION|VALIDATION|DONE|NONE>
             step: <one sentence describing what is currently happening, max 10 words, or "none">
             action: <the specific next action to take, max 15 words, or "none">
+            plan_approved: <true|false> — true only if the user explicitly confirmed, approved, or accepted a plan in this exchange (e.g. "yes go ahead", "looks good", "approved", "proceed with this plan", "давай", "одобрено", "приступай")
             Rules for task:
             - If phase is NONE, set step and action to "none".
-            - Output ONLY these 3 lines in the TASK section.""";
+            - Output ONLY these 4 lines in the TASK section.""";
 
     private final AnthropicClient anthropicClient;
 
@@ -99,6 +100,7 @@ public class LastExchangeAnalyzer {
         TaskPhase phase = null;
         String step = null;
         String action = null;
+        boolean planApproved = false;
 
         int factsStart = raw.indexOf("=== FACTS ===");
         int taskStart  = raw.indexOf("=== TASK ===");
@@ -112,13 +114,14 @@ public class LastExchangeAnalyzer {
             String taskSection = raw.substring(taskStart + "=== TASK ===".length()).trim();
             for (String line : taskSection.split("\n")) {
                 line = line.trim();
-                if (line.startsWith("phase:"))  phase  = parsePhase(line.substring(6).trim());
-                else if (line.startsWith("step:"))   step   = line.substring(5).trim();
-                else if (line.startsWith("action:")) action = line.substring(7).trim();
+                if (line.startsWith("phase:"))         phase       = parsePhase(line.substring(6).trim());
+                else if (line.startsWith("step:"))     step        = line.substring(5).trim();
+                else if (line.startsWith("action:"))   action      = line.substring(7).trim();
+                else if (line.startsWith("plan_approved:")) planApproved = "true".equalsIgnoreCase(line.substring(13).trim());
             }
         }
 
-        return new AnalysisResult(facts, phase, step, action);
+        return new AnalysisResult(facts, phase, step, action, planApproved);
     }
 
     private TaskPhase parsePhase(String value) {
@@ -132,10 +135,11 @@ public class LastExchangeAnalyzer {
     /**
      * Результат анализа одного хода диалога.
      *
-     * @param facts      обновлённый блок рабочей памяти в формате «key: value»; может быть {@code null}
-     * @param taskPhase  определённая фаза задачи; {@code null} если парсинг не удался
-     * @param taskStep   текущий шаг задачи; {@code null} если парсинг не удался
-     * @param taskAction ожидаемое следующее действие; {@code null} если парсинг не удался
+     * @param facts        обновлённый блок рабочей памяти в формате «key: value»; может быть {@code null}
+     * @param taskPhase    определённая фаза задачи; {@code null} если парсинг не удался
+     * @param taskStep     текущий шаг задачи; {@code null} если парсинг не удался
+     * @param taskAction   ожидаемое следующее действие; {@code null} если парсинг не удался
+     * @param planApproved {@code true} если пользователь явно подтвердил план в данном обмене
      */
-    public record AnalysisResult(String facts, TaskPhase taskPhase, String taskStep, String taskAction) {}
+    public record AnalysisResult(String facts, TaskPhase taskPhase, String taskStep, String taskAction, boolean planApproved) {}
 }

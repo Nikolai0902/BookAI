@@ -93,7 +93,7 @@ public class AgentBook {
         MemoryLayersSnapshot memorySnapshot = memoryEnabled
                 ? memoryManager.updateMemory(sessionId, profileId, analysis.facts())
                 : memoryManager.buildSnapshot(sessionId, profileId);
-        taskStateManager.updateTaskState(sessionId, analysis.taskPhase(), analysis.taskStep(), analysis.taskAction());
+        taskStateManager.updateTaskState(sessionId, analysis.taskPhase(), analysis.taskStep(), analysis.taskAction(), analysis.planApproved());
 
         return buildResponse(sessionId, result, strategy, ctx, lastMessageId, memorySnapshot,
                 taskStateManager.buildSnapshot(sessionId));

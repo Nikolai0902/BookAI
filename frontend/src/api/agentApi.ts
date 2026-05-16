@@ -39,6 +39,8 @@ export interface TaskStateSnapshot {
   currentStep: string | null
   expectedAction: string | null
   paused: boolean
+  planApproved: boolean
+  blockedTransition: string | null
 }
 
 export interface AgentChatResponse {

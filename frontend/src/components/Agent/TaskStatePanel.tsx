@@ -73,6 +73,23 @@ export default function TaskStatePanel() {
         </div>
       )}
 
+      {taskState.phase === 'PLANNING' && !taskState.planApproved && (
+        <div className="border-t border-gray-700 pt-2 flex items-start gap-1.5">
+          <span className="text-amber-400">⚠</span>
+          <span className="text-amber-300">Ожидает подтверждения плана</span>
+        </div>
+      )}
+
+      {taskState.blockedTransition && (
+        <div className="border-t border-gray-700 pt-2 flex items-start gap-1.5">
+          <span className="text-red-400">✗</span>
+          <div>
+            <div className="text-red-400 font-medium mb-0.5">Переход заблокирован</div>
+            <span className="text-red-300">{taskState.blockedTransition}</span>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={handlePauseResume}
         disabled={loading}

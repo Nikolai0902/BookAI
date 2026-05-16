@@ -34,6 +34,12 @@ public class AgentTaskStateEntity {
     private boolean paused;
 
     @Column(nullable = false)
+    private boolean planApproved;
+
+    @Column(columnDefinition = "TEXT")
+    private String blockedTransitionReason;
+
+    @Column(nullable = false)
     private Instant updatedAt;
 
     public AgentTaskStateEntity(String sessionId, TaskPhase phase, String currentStep, String expectedAction) {
@@ -42,6 +48,7 @@ public class AgentTaskStateEntity {
         this.currentStep = currentStep;
         this.expectedAction = expectedAction;
         this.paused = false;
+        this.planApproved = false;
         this.updatedAt = Instant.now();
     }
 
@@ -49,6 +56,18 @@ public class AgentTaskStateEntity {
         this.phase = phase;
         this.currentStep = currentStep;
         this.expectedAction = expectedAction;
+        this.blockedTransitionReason = null;
+        this.updatedAt = Instant.now();
+    }
+
+    public void approvePlan() {
+        this.planApproved = true;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Фиксирует причину отклонённого перехода без изменения фазы. */
+    public void block(String reason) {
+        this.blockedTransitionReason = reason;
         this.updatedAt = Instant.now();
     }
 

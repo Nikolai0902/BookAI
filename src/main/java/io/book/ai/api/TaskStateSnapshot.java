@@ -6,5 +6,7 @@ public record TaskStateSnapshot(
         TaskPhase phase,
         String currentStep,
         String expectedAction,
-        boolean paused
+        boolean paused,
+        boolean planApproved,
+        String blockedTransition
 ) {}
