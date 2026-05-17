@@ -6,7 +6,11 @@
       "Bash(npx tsc *)",
       "Bash(mvn clean *)",
       "Bash(npm run *)",
-      "Bash(mvn compile *)"
+      "Bash(mvn compile *)",
+      "Bash(mvn -pl bookai-mcp-server clean compile -q)",
+      "Bash(mvn -pl bookai-app clean compile -q)",
+      "WebFetch(domain:github.com)",
+      "WebSearch"
     ]
   }
 }

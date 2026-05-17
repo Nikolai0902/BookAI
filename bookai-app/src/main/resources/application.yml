@@ -10,6 +10,10 @@ agent:
   memory:
     long-term-update-interval: ${AGENT_LONG_TERM_UPDATE_INTERVAL:3}
 
+mcp:
+  server:
+    url: ${MCP_SERVER_URL:http://localhost:8081}
+
 spring:
   datasource:
     url: jdbc:h2:file:./data/bookai

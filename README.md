@@ -480,3 +480,102 @@ plan_approved: true|false
 #### Вывод
 
 До Task 15 машина состояний была номинальной: фаза записывалась, но переходы не контролировались. После — защита двухуровневая. Структурная блокировка гарантирует корректность состояния в БД. Поведенческий запрет в системном промпте останавливает ассистента ещё до генерации ответа: в фазе `PLANNING` без подтверждённого плана он не напишет ни строчки кода, а в фазе `EXECUTION` не объявит задачу выполненной, не предложив тестирование.
+
+---
+
+### Task 16: Подключение MCP
+
+**Задача:** установить MCP SDK, поднять локальный MCP-сервер, подключить к нему клиент из основного приложения — установить соединение и получить список доступных инструментов.
+
+#### Архитектура
+
+Проект переведён на Maven multi-module структуру:
+
+```
+BookAI/
+├── pom.xml                  ← parent POM
+├── bookai-app/              ← основное приложение (порт 8080)
+└── bookai-mcp-server/       ← MCP-сервер (порт 8081)
+```
+
+#### MCP-сервер (bookai-mcp-server)
+
+Реализован на официальном Java SDK `io.modelcontextprotocol.sdk:mcp:0.18.2` с транспортом **Streamable HTTP** (спека 2025-03-26) — единый эндпоинт `/mcp` принимает POST и поддерживает GET для SSE-fallback.
+
+| Компонент | Реализация |
+|---|---|
+| Транспорт | `HttpServletStreamableServerTransportProvider` — extends `HttpServlet`, зарегистрирован через `ServletRegistrationBean` |
+| Сервер | `McpServer.sync(provider).tool(...).build()` |
+| Инструменты | `searchBooks(query, limit?)` и `getBookDetails(isbn)` — вызывают OpenLibrary API |
+
+**Инструменты:**
+
+| Инструмент | Описание | Параметры |
+|---|---|---|
+| `searchBooks` | Поиск книг по запросу | `query` (required), `limit` (optional, default 5) |
+| `getBookDetails` | Детали книги по ISBN | `isbn` (required) |
+
+Источник данных — [OpenLibrary API](https://openlibrary.org) (бесплатно, без ключа).
+
+#### MCP-клиент (bookai-app)
+
+`McpClient` подключается при старте приложения через `HttpClientStreamableHttpTransport`:
+
+```
+@PostConstruct:
+  1. McpSyncClient.initialize()   → соединение с MCP-сервером
+  2. McpSyncClient.listTools()    → получение списка инструментов
+  3. Логирование name + description + inputSchema каждого инструмента
+```
+
+**Console output при старте:**
+```
+MCP initialize() — подключено к: bookai-mcp-server v1.0
+MCP tools/list() — загружено 2 инструментов:
+  name        : searchBooks
+  description : Поиск книг в каталоге OpenLibrary по названию, автору или теме
+  inputSchema : JsonSchema[type=object, properties={limit=..., query=...}, required=[query]...]
+  name        : getBookDetails
+  description : Получение детальной информации о книге по ISBN из каталога OpenLibrary
+  inputSchema : JsonSchema[type=object, properties={isbn=...}, required=[isbn]...]
+```
+
+Если MCP-сервер недоступен — приложение стартует без инструментов (graceful degradation), ошибка не бросается.
+
+#### Варианты реализации на Java
+
+При выборе подхода рассматривались четыре варианта:
+
+| Вариант | Почему не выбрали |
+|---|---|
+| **Spring AI MCP Starters** (`spring-ai-mcp-server-webmvc-spring-boot-starter`) | Требует Spring Boot 3.x. Несовместим с Spring Boot 4.0.3 — конфликт зависимостей Reactor Netty |
+| **Ручной JSON-RPC поверх HTTP** | Не является MCP SDK — просто HTTP-сервис, имитирующий протокол. Не совместим со стандартными MCP-клиентами |
+| **SSE транспорт** (`HttpClientSseClientTransport`) | Требует два эндпоинта (`GET /sse` + `POST /messages`) и Reactor Netty на сервере — те же риски несовместимости с Spring Boot 4.x |
+| **Stdio транспорт** (`StdioClientTransport`) | Запускает сервер как подпроцесс через stdin/stdout. Не подходит для Spring Boot приложения |
+
+**Выбран: официальный `io.modelcontextprotocol.sdk:mcp:0.18.2` со Streamable HTTP транспортом.**
+
+Причины:
+- Единственный транспорт в официальном SDK, совместимый со Spring Boot 4.0.3: использует `jakarta.servlet.http.HttpServlet` напрямую, без Reactor Netty
+- Streamable HTTP — современная спека MCP (2025-03-26): один эндпоинт `/mcp` вместо двух, клиент получает ответ синхронно в теле HTTP-ответа, SSE остаётся опциональным fallback
+- Сервер совместим со стандартными MCP-клиентами: Claude Code, Codex CLI и другими
+
+#### Совместимость
+
+MCP-сервер совместим со стандартными MCP-клиентами. Для подключения из Claude Code:
+
+```json
+// .claude/settings.json
+{
+  "mcpServers": {
+    "bookai-books": {
+      "type": "http",
+      "url": "http://localhost:8081/mcp"
+    }
+  }
+}
+```
+
+#### Вывод
+
+До Task 16 агент не имел доступа к внешним инструментам. После — в проекте есть полноценный MCP-сервер на официальном SDK с двумя инструментами OpenLibrary, и клиент в основном приложении, который устанавливает соединение, получает и логирует список инструментов при каждом старте. Инфраструктура готова к Task 17 — вызову инструментов из агентного цикла.
