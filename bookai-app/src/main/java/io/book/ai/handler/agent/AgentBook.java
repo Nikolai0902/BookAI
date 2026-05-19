@@ -11,13 +11,20 @@ import io.book.ai.handler.task.AgentTaskStateManager;
 import io.book.ai.llm.AnthropicClient;
 import io.book.ai.llm.AnthropicRequest;
 import io.book.ai.llm.AnthropicRequest.Message;
+import io.book.ai.llm.AnthropicRequest.ToolDefinition;
+import io.book.ai.llm.AnthropicRequest.ToolResultContent;
+import io.book.ai.llm.AnthropicResponse;
 import io.book.ai.llm.LlmResult;
+import io.book.ai.llm.McpClient;
+import io.modelcontextprotocol.spec.McpSchema;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,7 +35,8 @@ import java.util.UUID;
  * <ol>
  *   <li>Сохраняет сообщение пользователя в базе.</li>
  *   <li>Собирает системный промпт из четырёх слоёв: профиль, память, стратегия контекста, состояние задачи.</li>
- *   <li>Вызывает LLM с подготовленным контекстом и системным промптом.</li>
+ *   <li>Вызывает LLM с подготовленным контекстом, системным промптом и списком MCP-инструментов.</li>
+ *   <li>Если модель запрашивает инструменты — выполняет их через MCP и повторяет запрос (agentic loop).</li>
  *   <li>Сохраняет ответ ассистента с токен-статистикой.</li>
  *   <li>Запускает постобработку стратегии и обновляет память и состояние задачи.</li>
  *   <li>Возвращает ответ клиенту со снимками памяти и состояния задачи.</li>
@@ -36,12 +44,14 @@ import java.util.UUID;
  * Если {@code sessionId} не передан, генерируется новый UUID — так начинается новая сессия.
  * Стратегия по умолчанию — {@link ContextStrategyType#FULL_HISTORY}.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class AgentBook {
 
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
+    private static final int MAX_TOOL_ITERATIONS = 5;
 
     private final AnthropicClient anthropicClient;
     private final AgentSessionStore sessionStore;
@@ -50,6 +60,7 @@ public class AgentBook {
     private final AgentTaskStateManager taskStateManager;
     private final LastExchangeAnalyzer lastExchangeAnalyzer;
     private final AgentInvariantManager invariantManager;
+    private final McpClient mcpClient;
 
     @Value("${anthropic.model}")
     private final String defaultModel;
@@ -132,17 +143,80 @@ public class AgentBook {
     }
 
     /**
-     * Вызывает LLM с историей сообщений и системным промптом.
-     * При ошибке API сохраняет сообщение об ошибке от имени ассистента,
-     * чтобы история диалога оставалась консистентной, и пробрасывает исключение.
+     * Вызывает LLM с поддержкой agentic tool-use loop.
+     * <p>
+     * Передаёт список MCP-инструментов в запрос. Если модель возвращает {@code tool_use}-блоки,
+     * выполняет инструменты через {@link McpClient}, добавляет результаты в историю и повторяет вызов.
+     * Цикл продолжается до получения {@code stop_reason == "end_turn"} или достижения лимита итераций.
+     * При ошибке API сохраняет сообщение об ошибке, чтобы история диалога оставалась консистентной.
+     *
+     * @param model        идентификатор модели
+     * @param history      исходная история сообщений из стратегии контекста
+     * @param sessionId    идентификатор сессии (для сохранения ошибок)
+     * @param systemPrompt собранный системный промпт
+     * @return финальный результат LLM с суммарной статистикой токенов
      */
     private LlmResult callLlm(String model, List<Message> history, String sessionId, String systemPrompt) {
+        List<ToolDefinition> tools = convertTools(mcpClient.getAvailableTools());
+        List<Message> workingHistory = new ArrayList<>(history);
+        LlmResult accumulated = null;
+        long startTime = System.currentTimeMillis();
+
         try {
-            return anthropicClient.callApi(new AnthropicRequest(model, maxTokens, systemPrompt, null, null, history));
+            for (int i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+                AnthropicRequest request = new AnthropicRequest(
+                        model, maxTokens, systemPrompt, null, null, workingHistory,
+                        tools.isEmpty() ? null : tools);
+
+                AnthropicResponse response = anthropicClient.callRaw(request);
+                AnthropicResponse.Usage usage = response.usage();
+                long elapsed = System.currentTimeMillis() - startTime;
+
+                String textBlock = response.content().stream()
+                        .filter(c -> "text".equals(c.type()))
+                        .findFirst()
+                        .map(AnthropicResponse.Content::text)
+                        .orElse("");
+
+                LlmResult stepResult = new LlmResult(textBlock, usage.input_tokens(), usage.output_tokens(), elapsed);
+                accumulated = accumulated == null ? stepResult : accumulated.add(stepResult);
+
+                if (!"tool_use".equals(response.stop_reason())) {
+                    return accumulated;
+                }
+
+                List<AnthropicResponse.Content> toolUseBlocks = response.content().stream()
+                        .filter(c -> "tool_use".equals(c.type()))
+                        .toList();
+
+                workingHistory.add(new Message(ROLE_ASSISTANT, response.content()));
+
+                List<ToolResultContent> toolResults = new ArrayList<>();
+                for (AnthropicResponse.Content toolUse : toolUseBlocks) {
+                    log.info("MCP tool_use: {} {}", toolUse.name(), toolUse.input());
+                    String toolResult = mcpClient.callTool(toolUse.name(), toolUse.input());
+                    log.info("MCP tool_result: {}", toolResult);
+                    toolResults.add(ToolResultContent.of(toolUse.id(), toolResult));
+                }
+                workingHistory.add(new Message(ROLE_USER, toolResults));
+            }
+            return accumulated;
         } catch (HttpClientErrorException e) {
             sessionStore.saveMessage(sessionId, ROLE_ASSISTANT, "[ERROR] " + e.getResponseBodyAsString());
             throw e;
         }
+    }
+
+    /**
+     * Конвертирует MCP-инструменты в формат Anthropic API.
+     *
+     * @param mcpTools список инструментов, полученных от MCP-сервера
+     * @return список {@link ToolDefinition} для передачи в запрос к Anthropic
+     */
+    private static List<ToolDefinition> convertTools(List<McpSchema.Tool> mcpTools) {
+        return mcpTools.stream()
+                .map(t -> new ToolDefinition(t.name(), t.description(), t.inputSchema()))
+                .toList();
     }
 
     /**

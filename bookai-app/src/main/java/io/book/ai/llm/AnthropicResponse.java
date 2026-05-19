@@ -1,22 +1,30 @@
 package io.book.ai.llm;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
+import java.util.Map;
 
 /**
  * Response body received from the Anthropic Messages API.
  *
- * @param content list of content blocks produced by the model
- * @param usage   token consumption statistics for the request
+ * @param content     list of content blocks produced by the model
+ * @param usage       token consumption statistics for the request
+ * @param stop_reason reason generation stopped: {@code "end_turn"} or {@code "tool_use"}
  */
-public record AnthropicResponse(List<Content> content, Usage usage) {
+public record AnthropicResponse(List<Content> content, Usage usage, String stop_reason) {
 
     /**
-     * A single content block in the model's response.
+     * Единица контента в ответе модели.
      *
-     * @param type block type — typically {@code "text"}
-     * @param text the generated text; present only when {@code type} is {@code "text"}
+     * @param type  тип блока — {@code "text"} или {@code "tool_use"}
+     * @param text  сгенерированный текст; присутствует только для блоков типа {@code "text"}
+     * @param id    идентификатор вызова инструмента; присутствует только для {@code "tool_use"}
+     * @param name  имя вызываемого инструмента; присутствует только для {@code "tool_use"}
+     * @param input аргументы вызова инструмента; присутствует только для {@code "tool_use"}
      */
-    public record Content(String type, String text) {}
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Content(String type, String text, String id, String name, Map<String, Object> input) {}
 
     /**
      * Token usage reported by the API for billing and quota tracking.

@@ -29,10 +29,7 @@ public class AnthropicClient {
 
     public LlmResult callApi(AnthropicRequest request) {
         long start = System.currentTimeMillis();
-        var response = restClient.post()
-                .body(request)
-                .retrieve()
-                .body(AnthropicResponse.class);
+        AnthropicResponse response = callRaw(request);
         long elapsed = System.currentTimeMillis() - start;
 
         String text = response.content().stream()
@@ -43,5 +40,19 @@ public class AnthropicClient {
 
         AnthropicResponse.Usage usage = response.usage();
         return new LlmResult(text, usage.input_tokens(), usage.output_tokens(), elapsed);
+    }
+
+    /**
+     * Выполняет HTTP-запрос к Anthropic API и возвращает полный сырой ответ.
+     * Используется агентом для обработки ответов с {@code tool_use}-блоками.
+     *
+     * @param request сформированный запрос к API
+     * @return полный ответ, включая {@code stop_reason} и все контент-блоки
+     */
+    public AnthropicResponse callRaw(AnthropicRequest request) {
+        return restClient.post()
+                .body(request)
+                .retrieve()
+                .body(AnthropicResponse.class);
     }
 }
