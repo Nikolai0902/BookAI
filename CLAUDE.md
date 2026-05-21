@@ -4,45 +4,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**BookAI** is a Maven multi-module Spring Boot 4.0.3 + React application with two LLM-powered features and an MCP server:
+**BookAI** is a Maven multi-module Spring Boot 4.0.3 + React application with two LLM-powered features and two MCP servers:
 - **Book assistant** — Single-turn prompt with filtering modes (compare, reasoning strategies)
 - **Agent** — Stateful multi-turn dialogue with 4 context management strategies, branching support, and a 3-layer memory model
-- **MCP server** — Standalone MCP server exposing OpenLibrary tools via Streamable HTTP transport
+- **MCP books server** — Standalone MCP server exposing mock book catalogue tools via Streamable HTTP transport
+- **MCP scheduler server** — Standalone MCP server with reminder scheduling, background task processor, and aggregated summary tool
 
 ## Module Structure
 
 ```
 BookAI/
-├── pom.xml                  ← parent POM (packaging=pom, inherits spring-boot-starter-parent 4.0.3)
-├── bookai-app/              ← main application (port 8080)
+├── pom.xml                      ← parent POM (packaging=pom, inherits spring-boot-starter-parent 4.0.3)
+├── bookai-app/                  ← main application (port 8080)
 │   ├── pom.xml
 │   ├── src/
 │   ├── frontend/
-│   ├── data/                ← H2 file-based database
+│   ├── data/                    ← H2 file-based database
 │   └── lombok.config
-└── bookai-mcp-server/       ← MCP server (port 8081)
+├── bookai-mcp-server/           ← MCP books server (port 8081)
+│   ├── pom.xml
+│   └── src/
+└── bookai-mcp-scheduler/        ← MCP scheduler server (port 8082)
     ├── pom.xml
     └── src/
 ```
 
 - **Group ID:** `io.book.ai`
 - **Main class (app):** `io.book.ai.BookAiApplication`
-- **Main class (mcp):** `io.book.ai.mcp.McpServerApplication`
+- **Main class (mcp-server):** `io.book.ai.mcp.McpServerApplication`
+- **Main class (mcp-scheduler):** `io.book.ai.scheduler.McpSchedulerApplication`
 - **Java:** 25, **Build:** Maven
-- **DB:** H2 file-based (`./data/bookai` relative to `bookai-app/`), Hibernate `ddl-auto: create`
+- **DB (app):** H2 file-based (`./data/bookai` relative to `bookai-app/`), Hibernate `ddl-auto: create`
+- **DB (scheduler):** H2 file-based (`./data/scheduler` relative to `bookai-mcp-scheduler/`), Hibernate `ddl-auto: create`
 - **LLM:** Anthropic API (configurable model, default `claude-sonnet-4-6`)
 
 ## Commands
 
 ```bash
 # Run modules individually (from project root)
-mvn -pl bookai-mcp-server spring-boot:run   # MCP server on :8081
-mvn -pl bookai-app spring-boot:run          # main app on :8080
+mvn -pl bookai-mcp-server spring-boot:run      # MCP books server on :8081
+mvn -pl bookai-mcp-scheduler spring-boot:run   # MCP scheduler server on :8082
+mvn -pl bookai-app spring-boot:run             # main app on :8080
 
 # Build
-mvn clean package                           # build all modules
-mvn -pl bookai-app clean compile            # compile bookai-app only
-mvn -pl bookai-mcp-server clean compile     # compile bookai-mcp-server only
+mvn clean package                              # build all modules
+mvn -pl bookai-app clean compile               # compile bookai-app only
+mvn -pl bookai-mcp-server clean compile        # compile bookai-mcp-server only
+mvn -pl bookai-mcp-scheduler clean compile     # compile bookai-mcp-scheduler only
 
 # Frontend (inside bookai-app/)
 cd bookai-app/frontend
@@ -64,7 +72,8 @@ mvn -pl bookai-app -s settings-local.xml spring-boot:run
 | `AGENT_RECENT_MESSAGES_COUNT` | no | `5` | Window size for Sliding Window strategy |
 | `AGENT_SLIDING_WINDOW_SIZE` | no | `10` | Window size for Sliding Window strategy |
 | `AGENT_LONG_TERM_UPDATE_INTERVAL` | no | `3` | How many turns between long-term memory updates |
-| `MCP_SERVER_URL` | no | `http://localhost:8081` | URL of the MCP server |
+| `MCP_SERVER_URL` | no | `http://localhost:8081` | URL of the MCP books server |
+| `MCP_SCHEDULER_URL` | no | `http://localhost:8082` | URL of the MCP scheduler server |
 
 ## bookai-app Package Structure
 
@@ -114,7 +123,7 @@ bookai-app/src/main/java/io/book/ai/
 │   ├── AnthropicRequest.java
 │   ├── AnthropicResponse.java
 │   ├── LlmResult.java
-│   └── McpClient.java           # MCP client: initialize() + listTools() via Streamable HTTP
+│   └── McpClient.java           # Multi-server MCP client: connects to all configured MCP servers, routes callTool() by tool name
 ├── repository/
 │   ├── AgentMessageRepository.java
 │   ├── AgentBranchRepository.java
@@ -140,7 +149,28 @@ bookai-mcp-server/src/main/java/io/book/ai/mcp/
 
 **MCP SDK:** `io.modelcontextprotocol.sdk:mcp:0.18.2`
 **Transport:** Streamable HTTP — `HttpServletStreamableServerTransportProvider`, registered as `ServletRegistrationBean` at `/mcp`
-**Tools:** `searchBooks(query, limit?)` and `getBookDetails(isbn)` — call OpenLibrary API
+**Tools:** `searchBooks(query, limit?)` and `getBookDetails(id)` — mock data (10 Russian classics hardcoded in memory)
+
+## bookai-mcp-scheduler Package Structure
+
+```
+bookai-mcp-scheduler/src/main/java/io/book/ai/scheduler/
+├── McpSchedulerApplication.java          # @SpringBootApplication + @EnableScheduling
+├── config/
+│   └── McpSchedulerConfig.java          # HttpServletStreamableServerTransportProvider + McpSyncServer + tools
+├── entity/
+│   ├── ReminderEntity.java              # id, text, createdAt, fireAt, firedAt, status
+│   └── ReminderStatus.java             # PENDING | FIRED
+├── repository/
+│   └── ReminderRepository.java         # Spring Data JPA
+└── service/
+    └── ReminderService.java            # addReminder(), getSummary(), @Scheduled processDueReminders()
+```
+
+**MCP SDK:** `io.modelcontextprotocol.sdk:mcp:0.18.2`
+**Transport:** Streamable HTTP — same pattern as `bookai-mcp-server`
+**Tools:** `addReminder(text, delaySeconds?)` and `getSummary()`
+**Scheduler:** `@Scheduled(fixedDelay = 5000)` — checks for due PENDING reminders every 5 seconds, transitions them to FIRED
 
 ## API Endpoints
 
@@ -165,14 +195,25 @@ bookai-mcp-server/src/main/java/io/book/ai/mcp/
 | POST | `/mcp` | MCP JSON-RPC endpoint (initialize, tools/list, tools/call) |
 | GET | `/mcp` | SSE stream for server-initiated messages (Streamable HTTP fallback) |
 
+### bookai-mcp-scheduler (:8082)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/mcp` | MCP JSON-RPC endpoint (initialize, tools/list, tools/call) |
+| GET | `/mcp` | SSE stream for server-initiated messages (Streamable HTTP fallback) |
+
 ## MCP Client (McpClient.java)
 
-`McpClient` runs on `@PostConstruct` and connects to `bookai-mcp-server`:
-1. `McpSyncClient.initialize()` — establishes MCP connection
-2. `McpSyncClient.listTools()` — fetches and caches tool list
-3. `callTool(name, arguments)` — executes a tool (used by agent in Task 17)
+`McpClient` runs on `@PostConstruct` and connects to **all configured MCP servers** sequentially:
+1. For each server URL (`mcp.server.url`, `mcp.scheduler.url`):
+   - Direct HTTP POST to `/mcp` with JSON-RPC `initialize` → captures `Mcp-Session-Id` from response header
+   - Direct HTTP POST to `/mcp` with JSON-RPC `tools/list` → merges tools into shared `availableTools` list
+   - Records which server owns each tool in `Map<String, String> toolToServerUrl`
+2. `callTool(name, arguments)` — routes to the correct server by tool name
 
-Graceful degradation: if MCP server is unavailable at startup, `bookai-app` starts normally with an empty tool list.
+**Note:** Uses direct `RestClient` HTTP calls (not `McpSyncClient`) because `HttpClientStreamableHttpTransport.callTool()` has a bug in SDK 0.18.2 — it waits for an SSE GET channel that never opens. Types `McpSchema.Tool` and `McpSchema.JsonSchema` from the SDK are still used for compatibility.
+
+Graceful degradation: unavailable servers are skipped at startup; `bookai-app` starts with whatever tools were loaded successfully.
 
 ## Context Management Strategies
 
@@ -208,6 +249,10 @@ All tables in `bookai-app`. H2 file at `bookai-app/data/bookai`.
 **`agent_session_facts`** — `id, session_id (UNIQUE), facts (TEXT), updated_at`
 
 **`agent_long_term_memory`** — `id, profile_id, category, fact_key, fact_value, updated_at` — UNIQUE(profile_id, fact_key)
+
+H2 file at `bookai-mcp-scheduler/data/scheduler`.
+
+**`reminders`** — `id, text, created_at, fire_at, fired_at (nullable), status (PENDING|FIRED)`
 
 ## Frontend Structure
 

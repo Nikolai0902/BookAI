@@ -667,3 +667,131 @@ stdio/npm имело бы смысл если бы цель была опубл�
 #### Вывод
 
 До Task 17 агент отвечал только на основе внутренних знаний Claude. После — при вопросе о книгах он сам решает вызвать `searchBooks` и при необходимости `getBookDetails`, получает данные из MCP-сервера и строит ответ на их основе. Agentic loop завершён: LLM управляет инструментами, а не просто генерирует текст.
+
+---
+
+### Task 18: Планировщик и фоновые задачи
+
+**Задача:** создать MCP-инструмент с отложенным срабатыванием — агент ставит напоминание с задержкой, планировщик срабатывает в фоне, `getSummary` возвращает агрегированную историю. Агент, который работает 24/7 и периодически выдаёт сводку.
+
+#### Архитектура
+
+Добавлен третий Maven-модуль `bookai-mcp-scheduler` (порт 8082):
+
+```
+BookAI/
+├── pom.xml                       ← parent POM
+├── bookai-app/                   ← основное приложение (порт 8080)
+├── bookai-mcp-server/            ← MCP книги (порт 8081)
+└── bookai-mcp-scheduler/         ← MCP планировщик (порт 8082)
+    └── src/main/java/io/book/ai/scheduler/
+        ├── McpSchedulerApplication.java
+        ├── config/McpSchedulerConfig.java
+        ├── entity/ReminderEntity.java
+        ├── entity/ReminderStatus.java
+        ├── repository/ReminderRepository.java
+        └── service/ReminderService.java
+```
+
+#### MCP-инструменты планировщика
+
+| Инструмент | Описание | Параметры |
+|---|---|---|
+| `addReminder` | Добавляет напоминание с отложенным срабатыванием | `text` (required), `delaySeconds` (optional, default 60) |
+| `getSummary` | Возвращает сводку: ожидающие, сработавшие, последние 10 | — |
+
+**Ответ `addReminder`:**
+```json
+{"id": 1, "text": "проверить задачи", "scheduledAt": "2026-05-21 17:10:07",
+ "delaySeconds": 15, "status": "PENDING"}
+```
+
+**Ответ `getSummary`:**
+```json
+{"pending": 0, "fired": 2,
+ "recentFired": [{"id": 1, "text": "проверить задачи", "firedAt": "2026-05-21 17:10:08"}]}
+```
+
+#### Хранение данных
+
+`ReminderEntity` — JPA-сущность в H2 (`jdbc:h2:file:./data/scheduler`):
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | Long (PK) | Автогенерируемый идентификатор |
+| `text` | String | Текст напоминания |
+| `createdAt` | LocalDateTime | Время создания |
+| `fireAt` | LocalDateTime | Запланированное время срабатывания |
+| `firedAt` | LocalDateTime (nullable) | Фактическое время срабатывания |
+| `status` | Enum | `PENDING` → `FIRED` |
+
+#### Фоновый планировщик
+
+`ReminderService.processDueReminders()` — метод с `@Scheduled(fixedDelay = 5000)`:
+
+```
+Каждые 5 секунд:
+  1. findByStatusAndFireAtLessThanEqual(PENDING, now()) → список просроченных
+  2. Для каждого: reminder.fire(now) → status=FIRED, firedAt=now
+  3. Лог: "Reminder fired: [#1] 'проверить задачи'"
+```
+
+#### Многосерверный McpClient
+
+`McpClient` в `bookai-app` переработан для поддержки нескольких MCP-серверов одновременно:
+
+| До Task 18 | После Task 18 |
+|---|---|
+| Один URL → один `McpSyncClient` | Список URL → `Map<String, RestClient>` по URL |
+| Единый `sessionId` | `Map<String, String>` sessionId по URL |
+| Нет маршрутизации | `Map<String, String>` toolToServerUrl — маршрутизация вызова по имени инструмента |
+
+При старте `bookai-app` последовательно подключается к обоим серверам, объединяет списки инструментов. Недоступный сервер пропускается (graceful degradation).
+
+**Console output при старте:**
+```
+WARN  McpClient : MCP-сервер недоступен по адресу http://localhost:8081: ...
+INFO  McpClient : MCP initialize() [http://localhost:8082] — подключено к: bookai-mcp-scheduler v1.0
+INFO  McpClient :   [http://localhost:8082] name: addReminder
+INFO  McpClient :   [http://localhost:8082] name: getSummary
+INFO  McpClient : MCP: итого загружено 2 инструментов из 1 серверов
+```
+
+#### Сценарий работы
+
+```
+Пользователь: "Поставь напоминание через 15 секунд: проверить задачи"
+      │
+      ▼
+AgentBook.callLlm()
+  ├── 1. Claude → stop_reason: "tool_use"
+  │         content: [{type: "tool_use", name: "addReminder",
+  │                    input: {text: "проверить задачи", delaySeconds: 15}}]
+  │
+  ├── 2. mcpClient.callTool("addReminder", {...}) → http://localhost:8082
+  │         → {"id":1, "scheduledAt":"...", "status":"PENDING", "delaySeconds":15}
+  │
+  └── 3. Claude → stop_reason: "end_turn"
+              → "Напоминание добавлено! Сработает в 17:10:07."
+
+--- 15 секунд спустя ---
+bookai-mcp-scheduler: Reminder fired: [#1] 'проверить задачи'
+
+Пользователь: "Что в сводке?"
+  → Claude вызывает getSummary → {"pending":0,"fired":1,"recentFired":[...]}
+  → "Напоминание 'проверить задачи' уже сработало в 17:10:08."
+```
+
+#### Что реализовано
+
+- `McpSchedulerApplication` — `@SpringBootApplication` + `@EnableScheduling`
+- `ReminderEntity` / `ReminderStatus` — JPA-сущность с методом `fire(LocalDateTime)`
+- `ReminderRepository` — Spring Data JPA: `findByStatusAndFireAtLessThanEqual`, `findTop10ByStatusOrderByFiredAtDesc`, `countByStatus`
+- `ReminderService` — `addReminder()`, `getSummary()`, `@Scheduled processDueReminders()`
+- `McpSchedulerConfig` — `HttpServletStreamableServerTransportProvider` + `McpSyncServer` с двумя инструментами
+- `McpClient` — рефакторинг на Map-based мультисерверную архитектуру с маршрутизацией по имени инструмента
+- `application.yml` (bookai-app) — добавлен `mcp.scheduler.url: ${MCP_SCHEDULER_URL:http://localhost:8082}`
+
+#### Вывод
+
+До Task 18 агент умел только запрашивать данные через MCP — вся работа происходила синхронно в рамках одного запроса. После — появился отдельный MCP-сервер с фоновым планировщиком: агент ставит задачу с задержкой, сервер выполняет её независимо, а `getSummary` в любой момент возвращает актуальную историю. Это первый шаг к агенту, который работает 24/7 — MCP-инструменты не обязаны завершаться до ответа пользователю.

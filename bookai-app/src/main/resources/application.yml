@@ -13,6 +13,8 @@ agent:
 mcp:
   server:
     url: ${MCP_SERVER_URL:http://localhost:8081}
+  scheduler:
+    url: ${MCP_SCHEDULER_URL:http://localhost:8082}
 
 spring:
   datasource:

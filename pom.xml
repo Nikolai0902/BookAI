@@ -25,6 +25,7 @@
     <modules>
         <module>bookai-app</module>
         <module>bookai-mcp-server</module>
+        <module>bookai-mcp-scheduler</module>
     </modules>
 
     <build>
