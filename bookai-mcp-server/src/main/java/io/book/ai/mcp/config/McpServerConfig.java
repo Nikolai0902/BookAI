@@ -11,13 +11,18 @@ import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Spring-конфигурация MCP-сервера на базе официального Java SDK.
  * Использует Streamable HTTP транспорт (спека 2025-03-26) через один эндпоинт {@code /mcp}.
- * Регистрирует инструменты {@code searchBooks} и {@code getBookDetails} с mock-данными.
+ * Регистрирует инструменты {@code searchBooks}, {@code getBookDetails} с mock-данными
+ * и инструменты пайплайна {@code search}, {@code summarize}, {@code saveToFile}.
  */
 @Slf4j
 @Configuration
@@ -87,6 +92,9 @@ public class McpServerConfig {
                 .serverInfo(new McpSchema.Implementation("bookai-mcp-server", "1.0"))
                 .tool(searchBooksTool().tool(), searchBooksTool().call())
                 .tool(getBookDetailsTool().tool(), getBookDetailsTool().call())
+                .tool(searchTool().tool(), searchTool().call())
+                .tool(summarizeTool().tool(), summarizeTool().call())
+                .tool(saveToFileTool().tool(), saveToFileTool().call())
                 .build();
     }
 
@@ -130,6 +138,160 @@ public class McpServerConfig {
                 return new McpSchema.CallToolResult(json, false);
             } catch (Exception e) {
                 return new McpSchema.CallToolResult("Ошибка сериализации: " + e.getMessage(), true);
+            }
+        });
+    }
+
+    /**
+     * Шаг 1 пайплайна: поиск книг с plain-text выводом для передачи в {@code summarize}.
+     * Отличие от {@code searchBooksTool}: возвращает текст, а не JSON —
+     * это упрощает передачу результата в следующий инструмент пайплайна.
+     */
+    private McpServerFeatures.SyncToolSpecification searchTool() {
+        McpSchema.Tool tool = McpSchema.Tool.builder()
+                .name("search")
+                .description("Шаг 1 пайплайна. Ищет книги по запросу и возвращает результат в текстовом формате. Передай результат в summarize для создания резюме.")
+                .inputSchema(new McpSchema.JsonSchema(
+                        "object",
+                        Map.of(
+                                "query", Map.of("type", "string", "description", "Поисковый запрос — название, автор или жанр"),
+                                "limit", Map.of("type", "integer", "description", "Макс. количество результатов (по умолчанию 5)")
+                        ),
+                        List.of("query"),
+                        null, null, null
+                ))
+                .build();
+
+        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, arguments) -> {
+            String query = ((String) arguments.get("query")).toLowerCase();
+            int limit = arguments.containsKey("limit")
+                    ? ((Number) arguments.get("limit")).intValue()
+                    : 5;
+
+            List<Map<String, Object>> matches = BOOKS.stream()
+                    .filter(b -> b.get("title").toString().toLowerCase().contains(query)
+                            || b.get("author").toString().toLowerCase().contains(query)
+                            || b.get("genre").toString().toLowerCase().contains(query))
+                    .limit(limit)
+                    .toList();
+
+            if (matches.isEmpty()) {
+                return new McpSchema.CallToolResult("Книги по запросу '" + query + "' не найдены.", false);
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("Найдено ").append(matches.size()).append(" книг по запросу '").append(query).append("':\n");
+            for (int i = 0; i < matches.size(); i++) {
+                Map<String, Object> b = matches.get(i);
+                sb.append("[").append(i + 1).append("] «").append(b.get("title")).append("» — ")
+                  .append(b.get("author")).append(", ").append(b.get("year"))
+                  .append(", ").append(b.get("genre")).append("\n");
+            }
+
+            String result = sb.toString().trim();
+            log.info("search '{}' — найдено: {}", query, matches.size());
+            return new McpSchema.CallToolResult(result, false);
+        });
+    }
+
+    /**
+     * Шаг 2 пайплайна: форматирует текстовый список книг от {@code search}
+     * в связное резюме одним абзацем. Результат готов для передачи в {@code saveToFile}.
+     */
+    private McpServerFeatures.SyncToolSpecification summarizeTool() {
+        McpSchema.Tool tool = McpSchema.Tool.builder()
+                .name("summarize")
+                .description("Шаг 2 пайплайна. Принимает текст от search и создаёт связное резюме в виде одного абзаца. Передай результат в saveToFile для сохранения.")
+                .inputSchema(new McpSchema.JsonSchema(
+                        "object",
+                        Map.of(
+                                "text", Map.of("type", "string", "description", "Текст для резюме — обычно результат search"),
+                                "maxLength", Map.of("type", "integer", "description", "Макс. длина резюме в символах (по умолчанию 500)")
+                        ),
+                        List.of("text"),
+                        null, null, null
+                ))
+                .build();
+
+        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, arguments) -> {
+            String text = (String) arguments.get("text");
+            int maxLength = arguments.containsKey("maxLength")
+                    ? ((Number) arguments.get("maxLength")).intValue()
+                    : 500;
+
+            if (text == null || text.isBlank()) {
+                return new McpSchema.CallToolResult("Нет данных для резюме.", false);
+            }
+
+            String[] lines = text.split("\n");
+            List<String> bookLines = Arrays.stream(lines)
+                    .filter(l -> l.matches("^\\[\\d+\\].*"))
+                    .map(l -> l.replaceFirst("^\\[\\d+\\] ", ""))
+                    .toList();
+
+            String summary;
+            if (bookLines.isEmpty()) {
+                summary = text.length() <= maxLength ? text : text.substring(0, maxLength) + "...";
+            } else {
+                String header = lines[0];
+                summary = "Резюме: " + header + " " + String.join("; ", bookLines) + ".";
+                if (summary.length() > maxLength) {
+                    summary = summary.substring(0, maxLength) + "...";
+                }
+            }
+
+            log.info("summarize — вход: {} симв., резюме: {} симв.", text.length(), summary.length());
+            return new McpSchema.CallToolResult(summary, false);
+        });
+    }
+
+    /**
+     * Шаг 3 пайплайна: сохраняет переданный текст в файл {@code ./data/{filename}}.
+     * Создаёт каталог {@code data/} если он не существует.
+     * Валидирует имя файла регулярным выражением во избежание path traversal.
+     */
+    private McpServerFeatures.SyncToolSpecification saveToFileTool() {
+        McpSchema.Tool tool = McpSchema.Tool.builder()
+                .name("saveToFile")
+                .description("Шаг 3 пайплайна. Сохраняет текст в файл ./data/{filename} и возвращает подтверждение с абсолютным путём и размером файла.")
+                .inputSchema(new McpSchema.JsonSchema(
+                        "object",
+                        Map.of(
+                                "filename", Map.of("type", "string", "description", "Имя файла — только буквы, цифры, точки, дефисы, подчёркивания"),
+                                "content",  Map.of("type", "string", "description", "Текст для сохранения — обычно результат summarize")
+                        ),
+                        List.of("filename", "content"),
+                        null, null, null
+                ))
+                .build();
+
+        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, arguments) -> {
+            String filename = (String) arguments.get("filename");
+            String content  = (String) arguments.get("content");
+
+            if (!filename.matches("[a-zA-Z0-9._-]+")) {
+                return new McpSchema.CallToolResult(
+                        "Недопустимое имя файла. Используйте только буквы, цифры, точки, дефисы и подчёркивания.", true);
+            }
+
+            try {
+                Path dir = Path.of("./data");
+                Files.createDirectories(dir);
+                Path filePath = dir.resolve(filename);
+                Files.writeString(filePath, content, StandardCharsets.UTF_8);
+                long bytes = Files.size(filePath);
+
+                String result = MAPPER.writeValueAsString(Map.of(
+                        "filename", filename,
+                        "path",     filePath.toAbsolutePath().toString(),
+                        "bytes",    bytes,
+                        "status",   "saved"
+                ));
+                log.info("saveToFile '{}' — записано {} байт", filename, bytes);
+                return new McpSchema.CallToolResult(result, false);
+            } catch (Exception e) {
+                log.error("saveToFile '{}' — ошибка: {}", filename, e.getMessage());
+                return new McpSchema.CallToolResult("Ошибка записи файла: " + e.getMessage(), true);
             }
         });
     }
