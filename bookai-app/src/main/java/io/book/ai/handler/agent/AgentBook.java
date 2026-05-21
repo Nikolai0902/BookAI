@@ -51,7 +51,7 @@ public class AgentBook {
 
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
-    private static final int MAX_TOOL_ITERATIONS = 5;
+    private static final int MAX_TOOL_ITERATIONS = 10;
 
     private final AnthropicClient anthropicClient;
     private final AgentSessionStore sessionStore;

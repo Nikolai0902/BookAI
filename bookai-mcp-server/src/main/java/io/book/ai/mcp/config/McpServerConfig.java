@@ -95,6 +95,7 @@ public class McpServerConfig {
                 .tool(searchTool().tool(), searchTool().call())
                 .tool(summarizeTool().tool(), summarizeTool().call())
                 .tool(saveToFileTool().tool(), saveToFileTool().call())
+                .tool(listSavedFilesTool().tool(), listSavedFilesTool().call())
                 .build();
     }
 
@@ -138,6 +139,41 @@ public class McpServerConfig {
                 return new McpSchema.CallToolResult(json, false);
             } catch (Exception e) {
                 return new McpSchema.CallToolResult("Ошибка сериализации: " + e.getMessage(), true);
+            }
+        });
+    }
+
+    /**
+     * Возвращает список файлов, сохранённых через {@code saveToFile}, из каталога {@code ./data/}.
+     * Используется для подтверждения результата пайплайна перед постановкой напоминания.
+     */
+    private McpServerFeatures.SyncToolSpecification listSavedFilesTool() {
+        McpSchema.Tool tool = McpSchema.Tool.builder()
+                .name("listSavedFiles")
+                .description("Возвращает список файлов, сохранённых через saveToFile. Используй для проверки результатов перед постановкой напоминания.")
+                .inputSchema(new McpSchema.JsonSchema(
+                        "object", Map.of(), List.of(), null, null, null
+                ))
+                .build();
+
+        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, arguments) -> {
+            try {
+                Path dir = Path.of("./data");
+                if (!Files.exists(dir)) {
+                    return new McpSchema.CallToolResult(
+                            MAPPER.writeValueAsString(Map.of("files", List.of(), "count", 0)), false);
+                }
+                List<String> files = Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .map(p -> p.getFileName().toString())
+                        .sorted()
+                        .toList();
+                String result = MAPPER.writeValueAsString(Map.of("files", files, "count", files.size()));
+                log.info("listSavedFiles — найдено файлов: {}", files.size());
+                return new McpSchema.CallToolResult(result, false);
+            } catch (Exception e) {
+                log.error("listSavedFiles — ошибка: {}", e.getMessage());
+                return new McpSchema.CallToolResult("Ошибка чтения каталога: " + e.getMessage(), true);
             }
         });
     }
