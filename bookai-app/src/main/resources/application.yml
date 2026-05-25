@@ -16,6 +16,20 @@ mcp:
   scheduler:
     url: ${MCP_SCHEDULER_URL:http://localhost:8082}
 
+rag:
+  voyage-api-key: ${VOYAGE_API_KEY:}
+  voyage-model: ${RAG_VOYAGE_MODEL:voyage-3-lite}
+  embedding-dims: ${RAG_EMBEDDING_DIMS:512}
+  batch-size: ${RAG_BATCH_SIZE:64}
+  request-delay-ms: ${RAG_REQUEST_DELAY_MS:21000}
+  fixed-chunk-size: ${RAG_FIXED_CHUNK_SIZE:600}
+  fixed-chunk-overlap: ${RAG_FIXED_CHUNK_OVERLAP:100}
+  index-dir: ${RAG_INDEX_DIR:./data/rag}
+  source-paths:
+    - data/pdf/СП 22-2016.pdf
+    - CLAUDE.md
+    - data
+
 spring:
   datasource:
     url: jdbc:h2:file:./data/bookai
