@@ -27,4 +27,6 @@ public class RagProperties {
     private int fixedChunkOverlap = 100;
     private String indexDir = "./data/rag";
     private List<String> sourcePaths = new ArrayList<>();
+    private int topK = 5;
+    private int maxTokens = 2000;
 }

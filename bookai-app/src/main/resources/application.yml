@@ -25,6 +25,8 @@ rag:
   fixed-chunk-size: ${RAG_FIXED_CHUNK_SIZE:600}
   fixed-chunk-overlap: ${RAG_FIXED_CHUNK_OVERLAP:100}
   index-dir: ${RAG_INDEX_DIR:./data/rag}
+  top-k: ${RAG_TOP_K:5}
+  max-tokens: ${RAG_MAX_TOKENS:2000}
   source-paths:
     - data/pdf/СП 22-2016.pdf
     - CLAUDE.md
