@@ -1,22 +1,31 @@
 package io.book.ai.rag.api;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 
 /**
- * Ответ RAG-запроса с ответом LLM и ссылками на источники.
+ * Ответ RAG-запроса с ответом LLM, ссылками на источники и статистикой фильтрации.
  *
- * @param answer       текстовый ответ модели
- * @param citations    список чанков, использованных как контекст
- * @param inputTokens  количество входящих токенов
- * @param outputTokens количество сгенерированных токенов
- * @param elapsedMs    время ответа в миллисекундах
+ * @param answer          текстовый ответ модели
+ * @param citations       список чанков, использованных как контекст
+ * @param inputTokens     количество входящих токенов
+ * @param outputTokens    количество сгенерированных токенов
+ * @param elapsedMs       время ответа в миллисекундах
+ * @param retrievedChunks сколько чанков нашёл поиск (до фильтра)
+ * @param filteredChunks  сколько чанков передано в промпт (после фильтра)
+ * @param rewrittenQuery  переформулированный запрос (null если rewrite не применялся)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record RagQueryResponse(
         String answer,
         List<Citation> citations,
         int inputTokens,
         int outputTokens,
-        long elapsedMs
+        long elapsedMs,
+        int retrievedChunks,
+        int filteredChunks,
+        String rewrittenQuery
 ) {
 
     /**

@@ -27,6 +27,7 @@ rag:
   index-dir: ${RAG_INDEX_DIR:./data/rag}
   top-k: ${RAG_TOP_K:5}
   max-tokens: ${RAG_MAX_TOKENS:2000}
+  min-score: ${RAG_MIN_SCORE:0.45}
   source-paths:
     - data/pdf/СП 22-2016.pdf
     - CLAUDE.md

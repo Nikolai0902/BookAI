@@ -29,4 +29,5 @@ public class RagProperties {
     private List<String> sourcePaths = new ArrayList<>();
     private int topK = 5;
     private int maxTokens = 2000;
+    private float minScore = 0.45f;
 }

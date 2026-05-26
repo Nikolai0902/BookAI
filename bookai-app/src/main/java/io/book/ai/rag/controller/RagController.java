@@ -5,6 +5,7 @@ import io.book.ai.rag.api.EvalQuestion;
 import io.book.ai.rag.api.IndexingRequest;
 import io.book.ai.rag.api.IndexingResponse;
 import io.book.ai.rag.api.RagCompareResponse;
+import io.book.ai.rag.api.RagModesResponse;
 import io.book.ai.rag.api.RagQueryRequest;
 import io.book.ai.rag.api.RagQueryResponse;
 import io.book.ai.rag.index.IndexStatsService;
@@ -82,6 +83,19 @@ public class RagController {
         RagQueryResponse withRag = queryService.queryWithRag(request);
         RagQueryResponse withoutRag = queryService.queryWithoutRag(request);
         return new RagCompareResponse(request.question(), withRag, withoutRag);
+    }
+
+    /**
+     * Сравнивает три режима RAG для одного вопроса:
+     * RAW (без фильтра), FILTERED (с порогом), REWRITTEN+FILTERED (rewrite + порог).
+     *
+     * @param request вопрос, topK и minScore для сравнения
+     * @return три ответа рядом с метриками фильтрации
+     * @throws IOException если файл индекса недоступен
+     */
+    @PostMapping("/modes")
+    public RagModesResponse modes(@RequestBody RagQueryRequest request) throws IOException {
+        return queryService.queryModes(request);
     }
 
     /**

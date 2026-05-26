@@ -3,6 +3,7 @@ package io.book.ai.llm;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -20,10 +21,15 @@ public class AnthropicClient {
 
     @PostConstruct
     private void init() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10_000);
+        factory.setReadTimeout(120_000);
         this.restClient = RestClient.builder()
+                .requestFactory(factory)
                 .baseUrl(BASE_URL)
                 .defaultHeader("x-api-key", apiKey)
                 .defaultHeader("anthropic-version", ANTHROPIC_VERSION)
+                .defaultHeader("Connection", "close")
                 .build();
     }
 
