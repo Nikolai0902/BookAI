@@ -40,6 +40,14 @@ export default function Sidebar() {
         >
           🔍 RAG Chat
         </Link>
+        <Link
+          to="/ollama-chat"
+          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+            location.pathname === '/ollama-chat' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+          }`}
+        >
+          🦙 Local LLM
+        </Link>
       </nav>
       <FilterSelector />
       {mode === 'REASON' && <ReasonStrategy />}
