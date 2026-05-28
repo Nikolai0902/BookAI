@@ -15,6 +15,7 @@ import java.util.List;
  * @param retrievedChunks сколько чанков нашёл поиск (до фильтра)
  * @param filteredChunks  сколько чанков передано в промпт (после фильтра)
  * @param rewrittenQuery  переформулированный запрос (null если rewrite не применялся)
+ * @param confident       true — LLM ответил по найденным чанкам; false — контекст пуст, вернули «не знаю»
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RagQueryResponse(
@@ -25,7 +26,8 @@ public record RagQueryResponse(
         long elapsedMs,
         int retrievedChunks,
         int filteredChunks,
-        String rewrittenQuery
+        String rewrittenQuery,
+        boolean confident
 ) {
 
     /**

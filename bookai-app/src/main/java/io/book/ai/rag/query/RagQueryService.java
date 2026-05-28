@@ -30,10 +30,18 @@ import java.util.List;
 public class RagQueryService {
 
     private static final String RAG_SYSTEM_PROMPT = """
-            Ты — эксперт по документам. Ниже приведены релевантные фрагменты из базы знаний.
-            Используй ТОЛЬКО эти фрагменты для ответа на вопрос.
-            Если фрагменты не содержат ответ — явно скажи об этом.
-            В конце ответа перечисли номера использованных источников в формате [1], [2].""";
+            Ты — эксперт по документам. Строго соблюдай правила:
+
+            1. Отвечай ТОЛЬКО на основе предоставленных фрагментов — без домыслов.
+            2. Каждый ключевой факт подтверждай дословной цитатой из фрагмента в формате: «...текст...» [N].
+            3. В конце ответа обязательно перечисли использованные источники:
+               [N] source | section
+            4. Если ни один фрагмент не содержит ответа на вопрос — ответь ТОЛЬКО:
+               "Недостаточно информации для ответа. Пожалуйста, уточните вопрос."
+               Никакого другого текста в этом случае.""";
+
+    private static final String NO_CONTEXT_ANSWER =
+            "Недостаточно информации для ответа. Пожалуйста, уточните вопрос.";
 
     private final IndexSearchService searchService;
     private final RelevanceFilter relevanceFilter;
@@ -139,7 +147,7 @@ public class RagQueryService {
                 llmResult.text(), List.of(),
                 llmResult.inputTokens(), llmResult.outputTokens(),
                 llmResult.responseTimeMs(),
-                0, 0, null
+                0, 0, null, true
         );
     }
 
@@ -148,6 +156,11 @@ public class RagQueryService {
         FilterResult filtered = relevanceFilter.filter(candidates, minScore);
         List<SearchResult> results = filtered.results();
         log.info("buildResponse: filter={} kept={} removed={}", minScore, results.size(), filtered.removedCount());
+
+        if (results.isEmpty()) {
+            log.info("buildResponse: no chunks after filtering — returning no-context response");
+            return noContextResponse(candidates.size(), rewrittenQuery);
+        }
 
         String contextBlock = buildContextBlock(results);
         String userMessage = contextBlock + "\n=== ВОПРОС ===\n" + question;
@@ -167,7 +180,19 @@ public class RagQueryService {
                 llmResult.responseTimeMs(),
                 candidates.size(),
                 results.size(),
-                rewrittenQuery
+                rewrittenQuery,
+                true
+        );
+    }
+
+    private RagQueryResponse noContextResponse(int retrievedChunks, String rewrittenQuery) {
+        return new RagQueryResponse(
+                NO_CONTEXT_ANSWER,
+                List.of(),
+                0, 0, 0,
+                retrievedChunks, 0,
+                rewrittenQuery,
+                false
         );
     }
 
