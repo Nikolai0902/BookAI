@@ -19,6 +19,7 @@ import java.util.List;
  * @param confident      true — LLM ответил по чанкам; false — «не знаю»
  * @param turnNumber     номер хода в сессии (1-based)
  * @param contextFacts   текущая память задачи в формате key: value
+ * @param provider       идентификатор модели-провайдера (например "qwen2.5:3b (local)")
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RagChatResponse(
@@ -32,5 +33,6 @@ public record RagChatResponse(
         int filteredChunks,
         boolean confident,
         int turnNumber,
-        String contextFacts
+        String contextFacts,
+        String provider
 ) {}

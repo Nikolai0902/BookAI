@@ -18,6 +18,7 @@ export interface RagChatRequest {
   rewriteQuery?: boolean
   strategy?: ChunkingStrategyType
   model?: string
+  useLocal?: boolean
 }
 
 export interface RagChatResponse {
@@ -32,6 +33,7 @@ export interface RagChatResponse {
   confident: boolean
   turnNumber: number
   contextFacts: string | null
+  provider?: string
 }
 
 export async function sendRagChatMessage(req: RagChatRequest): Promise<RagChatResponse> {

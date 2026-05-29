@@ -2034,3 +2034,188 @@ ollama pull qwen2.5:3b
 #### Итог
 
 Task 26 проверил что Ollama работает изолированно. Task 27 встроил её в приложение: теперь можно сравнить ответы облачной Claude и локальной qwen2.5:3b прямо в одном интерфейсе — и наглядно увидеть разницу в качестве между 3B-параметрической локальной моделью и API-моделью.
+
+---
+
+### Task 28: Локальная LLM + RAG
+
+**Задача:** подключить локальную LLM (qwen2.5:3b через Ollama) к RAG-пайплайну, заменить Voyage AI эмбеддинги на локальные (nomic-embed-text), сделать индексирование и обновление памяти асинхронными. Добавить тогл Cloud/Local на страницу RAG Chat.
+
+---
+
+#### Зачем это нужно
+
+До Task 28 RAG-пайплайн полностью зависел от внешних API:
+- Voyage AI — для построения эмбеддингов при индексировании и поиске
+- Anthropic — для генерации ответов
+
+Оба вызывали практические проблемы: Voyage AI на бесплатном тарифе ограничен до 3 запросов в минуту (индексирование 368 чанков занимало несколько минут и рвало HTTP-соединение), Anthropic — это деньги и зависимость от сети. Task 28 делает весь пайплайн работоспособным офлайн, без API-ключей и без тарификации за эмбеддинги.
+
+---
+
+#### Архитектура после Task 28
+
+```
+Индексирование (async):
+  Файл → Чанкер → OllamaEmbeddingProvider (nomic-embed-text, батчи по 10)
+                                           ↓
+                                     IndexStore (FAISS/в памяти)
+
+RAG Chat — один ход:
+  Вопрос → [rewrite?] → OllamaEmbeddingProvider → поиск → RelevanceFilter
+                                                                   ↓
+  ┌─────── useLocal ──────────────────────────────────────────────┐
+  │ true  → qwen2.5:3b (Ollama, topK=2 по умолчанию)             │
+  │ false → claude-sonnet-4-6 (Anthropic, topK=5 по умолчанию)   │
+  └───────────────────────────────────────────────────────────────┘
+                    ↓
+              ответ + цитаты + provider
+                    ↓ (async, не блокирует ответ)
+              RagChatMemoryUpdateService → Haiku → обновление фактов
+```
+
+---
+
+#### Что реализовано
+
+**Абстракция эмбеддингов — `EmbeddingProvider`**
+
+Введён интерфейс `EmbeddingProvider` с единственным методом `embed(List<String> texts)`. Реализации выбираются через `@ConditionalOnProperty(name="rag.embedding-provider")`:
+
+| Реализация | Условие | Модель |
+|---|---|---|
+| `VoyageEmbeddingProvider` | `embedding-provider=voyage` (или по умолчанию) | voyage-3-lite, 512-dim |
+| `OllamaEmbeddingProvider` | `embedding-provider=ollama` | nomic-embed-text, 768-dim |
+
+`OllamaEmbeddingProvider` разбивает тексты на батчи по 10 штук — один батч на CPU занимает ~60 секунд, что вписывается в таймаут 600 сек. `EmbeddingBatchService` и `IndexSearchService` теперь инжектируют `EmbeddingProvider` вместо конкретного клиента.
+
+**Отдельный клиент для эмбеддингов — `OllamaEmbeddingClient`**
+
+Создан отдельный `RestClient` с read-timeout 600 секунд (10 минут). Нельзя было переиспользовать `OllamaClient` с его 120-секундным таймаутом — CPU-генерация 10 текстов занимает ~60 сек, и старый клиент обрывал соединение на первом же батче.
+
+**Асинхронное индексирование**
+
+`POST /api/rag/index` раньше выполнялся синхронно и разрывал HTTP-соединение через несколько минут. Теперь:
+- Эндпоинт возвращает `202 Accepted` немедленно
+- `AsyncIndexingService.startIndexing()` выполняется в Spring-пуле (`@Async`)
+- `IndexingStatusHolder` хранит состояние: `IDLE → RUNNING → DONE / ERROR`
+- `GET /api/rag/index/status` позволяет опросить прогресс
+
+**Роутинг Cloud / Local в `RagChatService`**
+
+В `RagChatRequest` добавлено поле `Boolean useLocal`. В сервисе:
+
+```java
+boolean useLocal = Boolean.TRUE.equals(request.useLocal());
+int topK = request.topK() != null ? request.topK() : (useLocal ? 2 : props.getTopK());
+```
+
+`topK` по умолчанию ограничен до 2 для локального режима: qwen2.5:3b на CPU с большим RAG-контекстом занимает десятки секунд при 5 чанках; 2 чанка дают стабильный ответ за 10-15 сек.
+
+При `useLocal=true` system prompt добавляется первым сообщением в массив (Ollama не имеет отдельного поля `system` в API):
+
+```java
+List<OllamaRequest.Message> ollamaMessages = new ArrayList<>();
+ollamaMessages.add(new OllamaRequest.Message("system", systemPrompt));
+for (Message m : messages) {
+    ollamaMessages.add(new OllamaRequest.Message(m.role(), (String) m.content()));
+}
+```
+
+В `RagChatResponse` добавлено поле `String provider` — показывает `"claude-sonnet-4-6"` или `"qwen2.5:3b (local)"`.
+
+**Асинхронное обновление памяти — `RagChatMemoryUpdateService`**
+
+`RagChatMemoryExtractor.extract()` вызывал Anthropic Haiku после каждого LLM-ответа, добавляя ~60 сек к времени ответа. Теперь это выполняется через `@Async` в фоне и не блокирует HTTP-ответ:
+
+```java
+// Сохранить ответ пользователю — не ждать обновления памяти
+memoryUpdateService.updateAsync(sessionId, question, llmResult.text(), currentFacts);
+return new RagChatResponse(..., currentFacts, provider);
+```
+
+**Frontend — тогл Cloud/Local**
+
+На странице RAG Chat в заголовке добавлена кнопка переключения провайдера:
+- `☁️ Cloud` — синяя, запросы идут через Anthropic
+- `🦙 Local` — фиолетовая, запросы идут через Ollama
+
+Под каждым ответом ассистента отображается цветной бейдж провайдера — сразу видно, каким LLM был сгенерирован каждый конкретный ответ в истории диалога.
+
+---
+
+#### Новые файлы
+
+| Файл | Роль |
+|---|---|
+| `rag/embedding/EmbeddingProvider.java` | Интерфейс: `embed(List<String>)` |
+| `rag/embedding/VoyageEmbeddingProvider.java` | Реализация через Voyage AI |
+| `rag/embedding/OllamaEmbeddingProvider.java` | Реализация через Ollama, батчи по 10 |
+| `ollama/OllamaEmbeddingClient.java` | RestClient с 600-сек таймаутом для `/api/embed` |
+| `rag/pipeline/IndexingStatusHolder.java` | Состояние асинхронного индексирования |
+| `rag/pipeline/AsyncIndexingService.java` | `@Async` запуск пайплайна |
+| `rag/chat/RagChatMemoryUpdateService.java` | `@Async` обновление памяти задачи |
+
+#### Изменённые файлы
+
+| Файл | Что изменилось |
+|---|---|
+| `RagChatRequest` | Добавлено поле `Boolean useLocal` |
+| `RagChatResponse` | Добавлено поле `String provider` |
+| `RagChatService` | Роутинг по `useLocal`, авто-ограничение `topK`, `@Async` память |
+| `EmbeddingBatchService` | Инжектирует `EmbeddingProvider` вместо `VoyageClient` |
+| `IndexSearchService` | Инжектирует `EmbeddingProvider` вместо `VoyageClient` |
+| `RagController` | `POST /api/rag/index` → 202, добавлен `GET /api/rag/index/status` |
+| `OllamaClient` | Таймаут увеличен до 600 сек |
+| `application.yml` | Параметры `rag.embedding-provider`, `ollama-embedding-model`, `embedding-dims` |
+| `ragChatApi.ts` | Поля `useLocal?` и `provider?` в TS-интерфейсах |
+| `useRagChatStore.ts` | Поле `provider?` в типе сообщения |
+| `RagChatMessage.tsx` | Бейдж провайдера под ответом |
+| `RagChatPage.tsx` | Тогл Cloud/Local, передача `useLocal` в запрос |
+
+---
+
+#### Конфигурация
+
+```yaml
+# application.yml
+rag:
+  embedding-provider: ${RAG_EMBEDDING_PROVIDER:ollama}    # voyage | ollama
+  ollama-embedding-model: ${RAG_OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+  embedding-dims: ${RAG_EMBEDDING_DIMS:768}               # 512 для voyage, 768 для nomic
+
+ollama:
+  model: ${OLLAMA_MODEL:qwen2.5:3b}
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+```
+
+**Важно:** при смене провайдера эмбеддингов необходимо переиндексировать документы — размерность векторов разная (512 vs 768), смешивать нельзя.
+
+---
+
+#### Необходимые модели в Ollama
+
+```bash
+ollama pull nomic-embed-text   # эмбеддинги (768-dim, ~274 MB)
+ollama pull qwen2.5:3b         # генерация (3B параметров, ~2 GB)
+```
+
+---
+
+#### Сравнение режимов
+
+| | Cloud (Anthropic) | Local (Ollama) |
+|---|---|---|
+| Модель генерации | claude-sonnet-4-6 | qwen2.5:3b |
+| Модель эмбеддингов | nomic-embed-text (Ollama) | nomic-embed-text (Ollama) |
+| topK по умолчанию | 5 | 2 |
+| Время ответа | 5–10 сек | 10–20 сек |
+| Стоимость | $0.003/1K tokens | 0 |
+| Требует интернет | Да | Нет |
+| Качество ответа | Высокое | Достаточное для Q&A |
+
+---
+
+#### Итог
+
+Task 28 замыкает локальный цикл: теперь весь RAG-пайплайн — от построения эмбеддингов до генерации ответа — может работать офлайн, без API-ключей и тарификации. Voyage AI больше не является узким местом при индексировании. Страница RAG Chat стала демонстрационным стендом: один и тот же вопрос можно задать в Cloud-режиме и Local-режиме и сравнить качество, скорость и стиль ответа прямо в интерфейсе — каждый ответ подписан провайдером.

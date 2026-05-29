@@ -6,6 +6,7 @@ import { sendRagChatMessage, clearRagChatSession } from '../api/ragChatApi'
 
 export default function RagChatPage() {
   const [input, setInput] = useState('')
+  const [useLocal, setUseLocal] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const messages = useRagChatStore((s) => s.messages)
@@ -37,6 +38,7 @@ export default function RagChatPage() {
       const res = await sendRagChatMessage({
         message: text,
         sessionId: sessionId ?? undefined,
+        useLocal,
       })
       setSessionId(res.sessionId)
       setContextFacts(res.contextFacts)
@@ -49,6 +51,7 @@ export default function RagChatPage() {
         outputTokens: res.outputTokens,
         turnNumber: res.turnNumber,
         elapsedMs: res.elapsedMs,
+        provider: res.provider,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Ошибка запроса'
@@ -116,6 +119,19 @@ export default function RagChatPage() {
         <header className="flex items-center gap-3 px-6 py-3 border-b border-gray-800">
           <h1 className="text-sm font-semibold text-white">RAG Chat</h1>
           <span className="text-xs text-gray-500">RAG + история диалога + память задачи</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-gray-600">LLM:</span>
+            <button
+              onClick={() => setUseLocal((v) => !v)}
+              className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                useLocal
+                  ? 'bg-purple-900 text-purple-200 hover:bg-purple-800'
+                  : 'bg-blue-900 text-blue-200 hover:bg-blue-800'
+              }`}
+            >
+              {useLocal ? '🦙 Local' : '☁️ Cloud'}
+            </button>
+          </div>
         </header>
 
         {/* Chat history */}

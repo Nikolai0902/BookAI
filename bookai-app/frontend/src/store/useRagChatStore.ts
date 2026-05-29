@@ -10,6 +10,7 @@ export interface RagChatMessage {
   outputTokens?: number
   turnNumber?: number
   elapsedMs?: number
+  provider?: string
 }
 
 interface RagChatStore {

@@ -6,7 +6,7 @@ import type { RagChatMessage as RagChatMessageType } from '../../store/useRagCha
 type Props = RagChatMessageType
 
 export default function RagChatMessage({
-  role, content, citations, confident, inputTokens, outputTokens, turnNumber, elapsedMs,
+  role, content, citations, confident, inputTokens, outputTokens, turnNumber, elapsedMs, provider,
 }: Props) {
   const [showCitations, setShowCitations] = useState(false)
   const isUser = role === 'user'
@@ -33,6 +33,18 @@ export default function RagChatMessage({
           {inputTokens !== undefined && <span title="Токены запроса">↑ {inputTokens}</span>}
           {outputTokens !== undefined && <span title="Токены ответа">↓ {outputTokens}</span>}
           {elapsedMs !== undefined && <span title="Время ответа">{elapsedMs} мс</span>}
+          {provider && (
+            <span
+              title="Провайдер"
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                provider.includes('local')
+                  ? 'bg-purple-900/50 text-purple-400'
+                  : 'bg-blue-900/50 text-blue-400'
+              }`}
+            >
+              {provider}
+            </span>
+          )}
           {confident === false && (
             <span className="text-yellow-600 font-medium">⚠ нет контекста</span>
           )}

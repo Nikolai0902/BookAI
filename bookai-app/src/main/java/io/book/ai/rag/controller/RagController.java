@@ -11,17 +11,22 @@ import io.book.ai.rag.api.RagQueryRequest;
 import io.book.ai.rag.api.RagQueryResponse;
 import io.book.ai.rag.eval.RagEvalService;
 import io.book.ai.rag.index.IndexStatsService;
+import io.book.ai.rag.pipeline.AsyncIndexingService;
+import io.book.ai.rag.pipeline.IndexingStatusHolder;
 import io.book.ai.rag.pipeline.RagIndexingPipeline;
 import io.book.ai.rag.query.RagQueryService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST-контроллер для управления RAG-индексацией и запросами.
@@ -32,22 +37,44 @@ import java.util.List;
 public class RagController {
 
     private final RagIndexingPipeline pipeline;
+    private final AsyncIndexingService asyncIndexingService;
+    private final IndexingStatusHolder statusHolder;
     private final IndexStatsService statsService;
     private final RagQueryService queryService;
     private final RagEvalService evalService;
 
     /**
-     * Запускает полный пайплайн индексации с обеими стратегиями чанкинга.
-     * Операция синхронная и может занимать несколько минут.
+     * Запускает индексацию асинхронно и сразу возвращает 202 Accepted.
+     * Прогресс доступен через {@code GET /api/rag/index/status}.
      *
      * @param request необязательный запрос с переопределением путей к документам
-     * @return результат со статистикой и путями к созданным файлам индексов
-     * @throws IOException при ошибках работы с файловой системой
      */
     @PostMapping("/index")
-    public IndexingResponse index(
-            @RequestBody(required = false) IndexingRequest request) throws IOException {
-        return pipeline.run(request);
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> index(
+            @RequestBody(required = false) IndexingRequest request) {
+        if (statusHolder.getState() == IndexingStatusHolder.State.RUNNING) {
+            return Map.of("status", "ALREADY_RUNNING", "message", "Индексирование уже выполняется");
+        }
+        asyncIndexingService.startIndexing(request);
+        return Map.of("status", "STARTED", "message", "Индексирование запущено в фоне");
+    }
+
+    /**
+     * Возвращает текущий статус фоновой индексации.
+     *
+     * @return статус: IDLE | RUNNING | DONE | ERROR
+     */
+    @GetMapping("/index/status")
+    public Map<String, Object> indexStatus() {
+        IndexingStatusHolder.State state = statusHolder.getState();
+        Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("state", state.name());
+        resp.put("message", statusHolder.getMessage());
+        if (state == IndexingStatusHolder.State.DONE && statusHolder.getLastResult() != null) {
+            resp.put("result", statusHolder.getLastResult());
+        }
+        return resp;
     }
 
     /**

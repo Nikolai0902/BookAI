@@ -2,10 +2,7 @@ package io.book.ai.rag.search;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.book.ai.rag.chunking.ChunkingStrategyType;
-import io.book.ai.rag.config.RagProperties;
-import io.book.ai.rag.embedding.VoyageClient;
-import io.book.ai.rag.embedding.VoyageRequest;
-import io.book.ai.rag.embedding.VoyageResponse;
+import io.book.ai.rag.embedding.EmbeddingProvider;
 import io.book.ai.rag.index.IndexEntry;
 import io.book.ai.rag.index.IndexFileFormat;
 import io.book.ai.rag.index.IndexWriter;
@@ -30,9 +27,8 @@ public class IndexSearchService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final VoyageClient voyageClient;
+    private final EmbeddingProvider embeddingProvider;
     private final IndexWriter indexWriter;
-    private final RagProperties props;
 
     /**
      * Выполняет поиск по заданному индексу и возвращает top-K результатов.
@@ -59,14 +55,7 @@ public class IndexSearchService {
     }
 
     private float[] embedQuery(String query) {
-        VoyageResponse resp = voyageClient.embed(
-                new VoyageRequest(List.of(query), props.getVoyageModel()));
-        List<Double> embedding = resp.data().get(0).embedding();
-        float[] vec = new float[embedding.size()];
-        for (int i = 0; i < embedding.size(); i++) {
-            vec[i] = embedding.get(i).floatValue();
-        }
-        return vec;
+        return embeddingProvider.embed(List.of(query)).get(0);
     }
 
     private float cosineSimilarity(float[] a, float[] b) {

@@ -17,9 +17,11 @@ mcp:
     url: ${MCP_SCHEDULER_URL:http://localhost:8082}
 
 rag:
+  embedding-provider: ${RAG_EMBEDDING_PROVIDER:ollama}
+  ollama-embedding-model: ${RAG_OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
   voyage-api-key: ${VOYAGE_API_KEY:}
   voyage-model: ${RAG_VOYAGE_MODEL:voyage-3-lite}
-  embedding-dims: ${RAG_EMBEDDING_DIMS:512}
+  embedding-dims: ${RAG_EMBEDDING_DIMS:768}
   batch-size: ${RAG_BATCH_SIZE:64}
   request-delay-ms: ${RAG_REQUEST_DELAY_MS:21000}
   fixed-chunk-size: ${RAG_FIXED_CHUNK_SIZE:600}

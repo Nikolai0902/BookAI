@@ -4,6 +4,9 @@ import io.book.ai.llm.AnthropicClient;
 import io.book.ai.llm.AnthropicRequest;
 import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.llm.LlmResult;
+import io.book.ai.ollama.OllamaClient;
+import io.book.ai.ollama.OllamaRequest;
+import io.book.ai.ollama.OllamaResponse;
 import io.book.ai.rag.api.RagQueryResponse.Citation;
 import io.book.ai.rag.chat.api.RagChatRequest;
 import io.book.ai.rag.chat.api.RagChatResponse;
@@ -52,12 +55,17 @@ public class RagChatService {
     private final RelevanceFilter relevanceFilter;
     private final QueryRewriter queryRewriter;
     private final AnthropicClient anthropicClient;
+    private final OllamaClient ollamaClient;
     private final RagChatSessionStore sessionStore;
     private final RagChatMemoryExtractor memoryExtractor;
+    private final RagChatMemoryUpdateService memoryUpdateService;
     private final RagProperties props;
 
     @Value("${anthropic.model}")
     private String defaultModel;
+
+    @Value("${ollama.model}")
+    private String ollamaModel;
 
     /**
      * Выполняет один ход RAG-чата: поиск контекста → LLM с историей → обновление памяти.
@@ -69,7 +77,8 @@ public class RagChatService {
     public RagChatResponse chat(RagChatRequest request) throws IOException {
         String sessionId = request.sessionId() != null ? request.sessionId() : UUID.randomUUID().toString();
         ChunkingStrategyType strategy = request.strategy() != null ? request.strategy() : ChunkingStrategyType.FIXED_SIZE;
-        int topK = request.topK() != null ? request.topK() : props.getTopK();
+        boolean useLocal = Boolean.TRUE.equals(request.useLocal());
+        int topK = request.topK() != null ? request.topK() : (useLocal ? 2 : props.getTopK());
         float minScore = request.minScore() != null ? request.minScore() : props.getMinScore();
         String model = request.model() != null ? request.model() : defaultModel;
         boolean rewrite = Boolean.TRUE.equals(request.rewriteQuery());
@@ -95,18 +104,40 @@ public class RagChatService {
             sessionStore.saveAssistantMessage(sessionId, NO_CONTEXT_ANSWER, List.of(), 0, 0);
             int turn = (int) (sessionStore.getMessageCount(sessionId) / 2);
             return new RagChatResponse(sessionId, NO_CONTEXT_ANSWER, List.of(),
-                    0, 0, 0, candidates.size(), 0, false, turn, currentFacts);
+                    0, 0, 0, candidates.size(), 0, false, turn, currentFacts, null);
         }
 
         // Собрать сообщения для LLM: история + текущий вопрос с RAG-контекстом
         List<Message> messages = buildMessages(history, question, ragResults);
         String systemPrompt = buildSystemPrompt(currentFacts);
 
+        log.info("RagChat: calling LLM, useLocal={}, model={}, messages={}", useLocal, useLocal ? ollamaModel : model, messages.size());
         long start = System.currentTimeMillis();
-        AnthropicRequest llmReq = new AnthropicRequest(model, props.getMaxTokens(), systemPrompt,
-                null, null, messages);
-        LlmResult llmResult = anthropicClient.callApi(llmReq);
+        LlmResult llmResult;
+        String provider;
+
+        if (useLocal) {
+            List<OllamaRequest.Message> ollamaMessages = new ArrayList<>();
+            ollamaMessages.add(new OllamaRequest.Message("system", systemPrompt));
+            for (Message m : messages) {
+                ollamaMessages.add(new OllamaRequest.Message(m.role(), (String) m.content()));
+            }
+            log.info("RagChat: sending {} messages to Ollama (system+history+question)", ollamaMessages.size());
+            OllamaResponse ollamaResp = ollamaClient.chat(new OllamaRequest(ollamaModel, ollamaMessages, false));
+            log.info("RagChat: Ollama responded, eval_count={}", ollamaResp.eval_count());
+            llmResult = new LlmResult(ollamaResp.message().content(),
+                    ollamaResp.prompt_eval_count(), ollamaResp.eval_count(), 0);
+            provider = ollamaModel + " (local)";
+        } else {
+            log.info("RagChat: sending {} messages to Anthropic", messages.size());
+            AnthropicRequest llmReq = new AnthropicRequest(model, props.getMaxTokens(), systemPrompt,
+                    null, null, messages);
+            llmResult = anthropicClient.callApi(llmReq);
+            log.info("RagChat: Anthropic responded, inputTokens={}, outputTokens={}", llmResult.inputTokens(), llmResult.outputTokens());
+            provider = model;
+        }
         long elapsed = System.currentTimeMillis() - start;
+        log.info("RagChat: LLM done in {}ms", elapsed);
 
         List<Citation> citations = buildCitations(ragResults);
 
@@ -117,11 +148,8 @@ public class RagChatService {
 
         int turn = (int) (sessionStore.getMessageCount(sessionId) / 2);
 
-        // Обновить память задачи через Haiku
-        String newFacts = memoryExtractor.extract(question, llmResult.text(), currentFacts);
-        if (newFacts != null && !newFacts.isBlank()) {
-            sessionStore.saveContextFacts(sessionId, newFacts);
-        }
+        // Обновить память задачи через Haiku асинхронно — не блокирует ответ
+        memoryUpdateService.updateAsync(sessionId, question, llmResult.text(), currentFacts);
 
         return new RagChatResponse(
                 sessionId,
@@ -134,7 +162,8 @@ public class RagChatService {
                 ragResults.size(),
                 true,
                 turn,
-                newFacts != null && !newFacts.isBlank() ? newFacts : currentFacts
+                currentFacts,
+                provider
         );
     }
 

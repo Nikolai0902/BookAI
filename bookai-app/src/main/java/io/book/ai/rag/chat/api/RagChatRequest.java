@@ -13,6 +13,7 @@ import io.book.ai.rag.chunking.ChunkingStrategyType;
  * @param rewriteQuery переформулировать запрос перед поиском (null → false)
  * @param strategy     стратегия индекса (null → FIXED_SIZE)
  * @param model        модель LLM (null → из конфига)
+ * @param useLocal     true — генерация через Ollama; false/null — Anthropic
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RagChatRequest(
@@ -22,5 +23,6 @@ public record RagChatRequest(
         Float minScore,
         Boolean rewriteQuery,
         ChunkingStrategyType strategy,
-        String model
+        String model,
+        Boolean useLocal
 ) {}

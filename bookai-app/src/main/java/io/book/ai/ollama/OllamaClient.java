@@ -24,7 +24,7 @@ public class OllamaClient {
     private void init() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(120_000);
+        factory.setReadTimeout(600_000);
         this.restClient = RestClient.builder()
                 .requestFactory(factory)
                 .baseUrl(baseUrl)
@@ -44,6 +44,20 @@ public class OllamaClient {
                 .body(request)
                 .retrieve()
                 .body(OllamaResponse.class);
+    }
+
+    /**
+     * Генерирует эмбеддинги для списка текстов через Ollama {@code /api/embed}.
+     *
+     * @param request запрос с именем модели и списком текстов
+     * @return ответ с матрицей эмбеддингов
+     */
+    public OllamaEmbedResponse embed(OllamaEmbedRequest request) {
+        return restClient.post()
+                .uri("/api/embed")
+                .body(request)
+                .retrieve()
+                .body(OllamaEmbedResponse.class);
     }
 
     /**

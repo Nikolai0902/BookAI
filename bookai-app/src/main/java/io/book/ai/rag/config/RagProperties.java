@@ -18,9 +18,11 @@ import java.util.List;
 @Setter
 public class RagProperties {
 
+    private String embeddingProvider = "voyage";
     private String voyageApiKey = "";
     private String voyageModel = "voyage-3-lite";
-    private int embeddingDims = 512;
+    private String ollamaEmbeddingModel = "nomic-embed-text";
+    private int embeddingDims = 768;
     private int batchSize = 64;
     private long requestDelayMs = 21000;
     private int fixedChunkSize = 600;
