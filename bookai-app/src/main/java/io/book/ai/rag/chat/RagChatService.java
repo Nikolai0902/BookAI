@@ -4,6 +4,7 @@ import io.book.ai.llm.AnthropicClient;
 import io.book.ai.llm.AnthropicRequest;
 import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.llm.LlmResult;
+import io.book.ai.ollama.ContextSizeGuard;
 import io.book.ai.ollama.OllamaClient;
 import io.book.ai.ollama.OllamaProperties;
 import io.book.ai.ollama.OllamaRequest;
@@ -143,6 +144,11 @@ public class RagChatService {
             }
             log.info("RagChat: sending {} messages to Ollama (system+history+question)", ollamaMessages.size());
             java.util.Map<String, Object> ollamaOptions = ollamaProperties.toOptionsMap();
+            int estimated = ContextSizeGuard.estimateTokens(ollamaMessages.stream()
+                    .map(OllamaRequest.Message::content).toList());
+            int numCtx = ollamaProperties.getOptions() != null && ollamaProperties.getOptions().getNumCtx() != null
+                    ? ollamaProperties.getOptions().getNumCtx() : 4096;
+            ContextSizeGuard.check(estimated, numCtx);
             OllamaResponse ollamaResp = ollamaClient.chat(new OllamaRequest(ollamaModel, ollamaMessages, false,
                     ollamaOptions.isEmpty() ? null : ollamaOptions));
             log.info("RagChat: Ollama responded, eval_count={}", ollamaResp.eval_count());

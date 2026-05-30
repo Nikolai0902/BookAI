@@ -46,6 +46,11 @@ public class OllamaChatService {
                 ? request.model() : ollamaProperties.getModel();
         Map<String, Object> options = mergeOptions(request.options());
 
+        int estimated = ContextSizeGuard.estimateTokens(messages.stream()
+                .map(OllamaRequest.Message::content).toList());
+        int numCtx = resolveNumCtx(options);
+        ContextSizeGuard.check(estimated, numCtx);
+
         OllamaRequest ollamaReq = new OllamaRequest(model, messages, false,
                 options.isEmpty() ? null : options);
         OllamaResponse ollamaResp = ollamaClient.chat(ollamaReq);
@@ -77,5 +82,16 @@ public class OllamaChatService {
         if (value != null) {
             map.put(key, value);
         }
+    }
+
+    /**
+     * Достаёт {@code num_ctx} из мёрджнутой карты опций; при отсутствии — дефолт 4096.
+     */
+    private static int resolveNumCtx(Map<String, Object> options) {
+        Object v = options.get("num_ctx");
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        return 4096;
     }
 }
