@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useOllamaChatStore } from '../store/useOllamaChatStore'
 import { sendOllamaMessage, checkOllamaStatus } from '../api/ollamaChatApi'
+import OllamaParamsPanel from '../components/Ollama/OllamaParamsPanel'
 
 export default function OllamaChatPage() {
   const [input, setInput] = useState('')
@@ -12,6 +13,7 @@ export default function OllamaChatPage() {
   const isLoading = useOllamaChatStore((s) => s.isLoading)
   const error = useOllamaChatStore((s) => s.error)
   const modelInfo = useOllamaChatStore((s) => s.modelInfo)
+  const params = useOllamaChatStore((s) => s.params)
   const addMessage = useOllamaChatStore((s) => s.addMessage)
   const setLoading = useOllamaChatStore((s) => s.setLoading)
   const setError = useOllamaChatStore((s) => s.setError)
@@ -41,13 +43,21 @@ export default function OllamaChatPage() {
     setError(null)
 
     try {
-      const res = await sendOllamaMessage({ message: text, history: buildHistory() })
+      const res = await sendOllamaMessage({
+        message: text,
+        history: buildHistory(),
+        model: params.model || null,
+        systemPrompt: params.systemPrompt || null,
+        options: params.options,
+      })
       addMessage({
         role: 'assistant',
         content: res.answer,
         elapsedMs: res.elapsedMs,
         evalCount: res.evalCount,
         model: res.model,
+        appliedOptions: res.appliedOptions,
+        paramsSnapshot: { model: params.model, promptPreset: params.promptPreset },
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Ошибка запроса'
@@ -71,10 +81,26 @@ export default function OllamaChatPage() {
     { to: '/ollama-chat', label: '🦙 Local LLM' },
   ]
 
+  const renderOptionsBadge = (msg: { appliedOptions?: Record<string, number | string>; paramsSnapshot?: { promptPreset: 'default' | 'rag' } }) => {
+    const o = msg.appliedOptions
+    if (!o) return null
+    const parts: string[] = []
+    if (o.temperature !== undefined) parts.push(`temp=${o.temperature}`)
+    if (o.top_p !== undefined) parts.push(`top_p=${o.top_p}`)
+    if (o.top_k !== undefined) parts.push(`top_k=${o.top_k}`)
+    if (o.num_ctx !== undefined) parts.push(`ctx=${o.num_ctx}`)
+    if (o.num_predict !== undefined) parts.push(`predict=${o.num_predict}`)
+    if (o.repeat_penalty !== undefined) parts.push(`rep=${o.repeat_penalty}`)
+    if (msg.paramsSnapshot?.promptPreset === 'rag') parts.push('prompt=rag')
+    return parts.length ? (
+      <div className="mt-1 text-[10px] text-gray-600 font-mono break-all">{parts.join(' · ')}</div>
+    ) : null
+  }
+
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">
       {/* Sidebar */}
-      <aside className="w-64 shrink-0 flex flex-col gap-4 p-4 bg-gray-900 border-r border-gray-800 overflow-y-auto">
+      <aside className="w-72 shrink-0 flex flex-col gap-4 p-4 bg-gray-900 border-r border-gray-800 overflow-y-auto">
         <div className="text-base font-semibold text-white tracking-tight">BookAI</div>
         <nav className="flex flex-col gap-1">
           {navLinks.map(({ to, label }) => (
@@ -107,8 +133,10 @@ export default function OllamaChatPage() {
           )}
         </div>
 
+        <OllamaParamsPanel />
+
         {messages.length > 0 && (
-          <div className="mt-auto">
+          <div>
             <button
               onClick={clearMessages}
               className="w-full px-3 py-2 text-xs rounded-md bg-gray-800 text-gray-400 hover:bg-red-900 hover:text-red-200 transition-colors"
@@ -125,7 +153,7 @@ export default function OllamaChatPage() {
         <header className="flex items-center gap-3 px-6 py-3 border-b border-gray-800">
           <h1 className="text-sm font-semibold text-white">Local LLM</h1>
           <span className="px-2 py-0.5 text-xs rounded-full bg-purple-900 text-purple-300 font-medium">Local</span>
-          <span className="text-xs text-gray-500">Запросы идут только на localhost — без облака</span>
+          <span className="text-xs text-gray-500">Параметры из боковой панели применяются к следующему вопросу</span>
         </header>
 
         {/* Chat history */}
@@ -155,6 +183,7 @@ export default function OllamaChatPage() {
                     {msg.model && <span className="text-purple-500">{msg.model}</span>}
                   </div>
                 )}
+                {msg.role === 'assistant' && renderOptionsBadge(msg)}
               </div>
             </div>
           ))}

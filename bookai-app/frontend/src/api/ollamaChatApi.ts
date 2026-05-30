@@ -5,9 +5,21 @@ export interface HistoryMessage {
   content: string
 }
 
+export interface OllamaOptions {
+  temperature?: number | null
+  topP?: number | null
+  topK?: number | null
+  numCtx?: number | null
+  numPredict?: number | null
+  repeatPenalty?: number | null
+}
+
 export interface OllamaChatRequest {
   message: string
   history: HistoryMessage[]
+  model?: string | null
+  systemPrompt?: string | null
+  options?: OllamaOptions | null
 }
 
 export interface OllamaChatResponse {
@@ -15,6 +27,7 @@ export interface OllamaChatResponse {
   model: string
   elapsedMs: number
   evalCount: number
+  appliedOptions?: Record<string, number | string>
 }
 
 export interface OllamaStatus {

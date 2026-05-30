@@ -5,6 +5,7 @@ import io.book.ai.llm.AnthropicRequest;
 import io.book.ai.llm.AnthropicRequest.Message;
 import io.book.ai.llm.LlmResult;
 import io.book.ai.ollama.OllamaClient;
+import io.book.ai.ollama.OllamaProperties;
 import io.book.ai.ollama.OllamaRequest;
 import io.book.ai.ollama.OllamaResponse;
 import io.book.ai.rag.api.RagQueryResponse.Citation;
@@ -51,11 +52,29 @@ public class RagChatService {
             5. Если ни один фрагмент не содержит ответа — ответь ТОЛЬКО:
                "Недостаточно информации. Пожалуйста, уточните вопрос.\"""";
 
+    /**
+     * Короткий промпт под локальную 3B-модель: явная структура и пример вместо длинного списка правил.
+     * qwen2.5:3b лучше держит формат при компактных инструкциях.
+     */
+    private static final String LOCAL_RAG_SYSTEM_PROMPT = """
+            Ты отвечаешь на вопрос ТОЛЬКО по тексту фрагментов ниже.
+
+            Правила:
+            - Не придумывай факты. Если ответа нет во фрагментах — пиши ровно: "Недостаточно информации."
+            - Каждый факт подтверждай цитатой в формате: "...текст..." [N], где N — номер фрагмента.
+            - В конце добавь блок "Источники:" со списком: [N] source | section.
+
+            Пример ответа:
+            Порт сервиса — 8080 [1].
+            Источники:
+            [1] README.md | Конфигурация""";
+
     private final IndexSearchService searchService;
     private final RelevanceFilter relevanceFilter;
     private final QueryRewriter queryRewriter;
     private final AnthropicClient anthropicClient;
     private final OllamaClient ollamaClient;
+    private final OllamaProperties ollamaProperties;
     private final RagChatSessionStore sessionStore;
     private final RagChatMemoryExtractor memoryExtractor;
     private final RagChatMemoryUpdateService memoryUpdateService;
@@ -109,7 +128,7 @@ public class RagChatService {
 
         // Собрать сообщения для LLM: история + текущий вопрос с RAG-контекстом
         List<Message> messages = buildMessages(history, question, ragResults);
-        String systemPrompt = buildSystemPrompt(currentFacts);
+        String systemPrompt = buildSystemPrompt(currentFacts, useLocal);
 
         log.info("RagChat: calling LLM, useLocal={}, model={}, messages={}", useLocal, useLocal ? ollamaModel : model, messages.size());
         long start = System.currentTimeMillis();
@@ -123,7 +142,9 @@ public class RagChatService {
                 ollamaMessages.add(new OllamaRequest.Message(m.role(), (String) m.content()));
             }
             log.info("RagChat: sending {} messages to Ollama (system+history+question)", ollamaMessages.size());
-            OllamaResponse ollamaResp = ollamaClient.chat(new OllamaRequest(ollamaModel, ollamaMessages, false));
+            java.util.Map<String, Object> ollamaOptions = ollamaProperties.toOptionsMap();
+            OllamaResponse ollamaResp = ollamaClient.chat(new OllamaRequest(ollamaModel, ollamaMessages, false,
+                    ollamaOptions.isEmpty() ? null : ollamaOptions));
             log.info("RagChat: Ollama responded, eval_count={}", ollamaResp.eval_count());
             llmResult = new LlmResult(ollamaResp.message().content(),
                     ollamaResp.prompt_eval_count(), ollamaResp.eval_count(), 0);
@@ -183,11 +204,12 @@ public class RagChatService {
         return messages;
     }
 
-    private String buildSystemPrompt(String facts) {
+    private String buildSystemPrompt(String facts, boolean useLocal) {
+        String base = useLocal ? LOCAL_RAG_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
         if (facts == null || facts.isBlank()) {
-            return BASE_SYSTEM_PROMPT;
+            return base;
         }
-        return BASE_SYSTEM_PROMPT + "\n\n## Память задачи\n" + facts;
+        return base + "\n\n## Память задачи\n" + facts;
     }
 
     private String buildContextBlock(List<SearchResult> results) {

@@ -11,6 +11,8 @@ package io.book.ai.rag.api;
  * @param confident       true если LLM ответил по чанкам; false — "не знаю"
  * @param maxScore        лучший score среди citations (0 если citations пусты)
  * @param filteredChunks  сколько чанков прошло фильтр
+ * @param elapsedMs       время ответа LLM в миллисекундах
+ * @param outputTokens    количество сгенерированных токенов
  */
 public record EvalResult(
         int questionId,
@@ -20,5 +22,7 @@ public record EvalResult(
         boolean hasInlineQuotes,
         boolean confident,
         float maxScore,
-        int filteredChunks
+        int filteredChunks,
+        long elapsedMs,
+        int outputTokens
 ) {}

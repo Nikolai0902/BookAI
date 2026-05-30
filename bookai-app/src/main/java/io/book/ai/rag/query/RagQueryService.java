@@ -3,6 +3,10 @@ package io.book.ai.rag.query;
 import io.book.ai.llm.AnthropicClient;
 import io.book.ai.llm.AnthropicRequest;
 import io.book.ai.llm.LlmResult;
+import io.book.ai.ollama.OllamaClient;
+import io.book.ai.ollama.OllamaProperties;
+import io.book.ai.ollama.OllamaRequest;
+import io.book.ai.ollama.OllamaResponse;
 import io.book.ai.rag.api.RagModesResponse;
 import io.book.ai.rag.api.RagQueryRequest;
 import io.book.ai.rag.api.RagQueryResponse;
@@ -19,7 +23,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Оркестратор RAG-запроса: rewrite → поиск → фильтрация → промпт → LLM.
@@ -40,6 +46,20 @@ public class RagQueryService {
                "Недостаточно информации для ответа. Пожалуйста, уточните вопрос."
                Никакого другого текста в этом случае.""";
 
+    /** Короткий промпт под 3B-модель: явная структура и пример — лучше держит формат цитат. */
+    private static final String LOCAL_RAG_SYSTEM_PROMPT = """
+            Ты отвечаешь на вопрос ТОЛЬКО по тексту фрагментов ниже.
+
+            Правила:
+            - Не придумывай факты. Если ответа нет во фрагментах — пиши ровно: "Недостаточно информации."
+            - Каждый факт подтверждай цитатой в формате: "...текст..." [N], где N — номер фрагмента.
+            - В конце добавь блок "Источники:" со списком: [N] source | section.
+
+            Пример ответа:
+            Порт сервиса — 8080 [1].
+            Источники:
+            [1] README.md | Конфигурация""";
+
     private static final String NO_CONTEXT_ANSWER =
             "Недостаточно информации для ответа. Пожалуйста, уточните вопрос.";
 
@@ -47,6 +67,8 @@ public class RagQueryService {
     private final RelevanceFilter relevanceFilter;
     private final QueryRewriter queryRewriter;
     private final AnthropicClient anthropicClient;
+    private final OllamaClient ollamaClient;
+    private final OllamaProperties ollamaProperties;
     private final RagProperties props;
 
     @Value("${anthropic.model}")
@@ -64,7 +86,9 @@ public class RagQueryService {
                 ? request.strategy() : ChunkingStrategyType.FIXED_SIZE;
         int topK = request.topK() != null ? request.topK() : props.getTopK();
         float minScore = request.minScore() != null ? request.minScore() : props.getMinScore();
-        String model = request.model() != null ? request.model() : defaultModel;
+        boolean useLocal = Boolean.TRUE.equals(request.useLocal());
+        String model = request.model() != null ? request.model()
+                : (useLocal ? ollamaProperties.getModel() : defaultModel);
         boolean rewrite = Boolean.TRUE.equals(request.rewriteQuery());
 
         String effectiveQuery = rewrite
@@ -74,7 +98,7 @@ public class RagQueryService {
         log.info("Found {} candidates for query: {}", candidates.size(), effectiveQuery);
 
         return buildResponse(request.question(), candidates, minScore, model,
-                rewrite ? effectiveQuery : null);
+                rewrite ? effectiveQuery : null, useLocal);
     }
 
     /**
@@ -113,16 +137,16 @@ public class RagQueryService {
         log.info("Modes: rewritten search returned {} candidates", rewrittenCandidates.size());
 
         // LLM call #1: raw (без фильтра)
-        RagQueryResponse raw = buildResponse(request.question(), originalCandidates, 0f, model, null);
+        RagQueryResponse raw = buildResponse(request.question(), originalCandidates, 0f, model, null, false);
         sleep(1500);
 
         // LLM call #2: filtered (с фильтром, оригинальный запрос)
-        RagQueryResponse filtered = buildResponse(request.question(), originalCandidates, minScore, model, null);
+        RagQueryResponse filtered = buildResponse(request.question(), originalCandidates, minScore, model, null, false);
         sleep(1500);
 
         // LLM call #3: rewritten + filtered
         RagQueryResponse rewrittenFiltered = buildResponse(
-                request.question(), rewrittenCandidates, minScore, model, rewrittenQuery);
+                request.question(), rewrittenCandidates, minScore, model, rewrittenQuery, false);
 
         return new RagModesResponse(request.question(), raw, filtered, rewrittenFiltered);
     }
@@ -152,7 +176,8 @@ public class RagQueryService {
     }
 
     private RagQueryResponse buildResponse(String question, List<SearchResult> candidates,
-                                           float minScore, String model, String rewrittenQuery) {
+                                           float minScore, String model, String rewrittenQuery,
+                                           boolean useLocal) {
         FilterResult filtered = relevanceFilter.filter(candidates, minScore);
         List<SearchResult> results = filtered.results();
         log.info("buildResponse: filter={} kept={} removed={}", minScore, results.size(), filtered.removedCount());
@@ -165,13 +190,27 @@ public class RagQueryService {
         String contextBlock = buildContextBlock(results);
         String userMessage = contextBlock + "\n=== ВОПРОС ===\n" + question;
 
-        AnthropicRequest llmReq = new AnthropicRequest(
-                model, props.getMaxTokens(), RAG_SYSTEM_PROMPT,
-                null, null,
-                List.of(new AnthropicRequest.Message("user", userMessage))
-        );
+        LlmResult llmResult;
+        if (useLocal) {
+            List<OllamaRequest.Message> ollamaMessages = new ArrayList<>();
+            ollamaMessages.add(new OllamaRequest.Message("system", LOCAL_RAG_SYSTEM_PROMPT));
+            ollamaMessages.add(new OllamaRequest.Message("user", userMessage));
+            Map<String, Object> options = ollamaProperties.toOptionsMap();
+            long start = System.currentTimeMillis();
+            OllamaResponse ollamaResp = ollamaClient.chat(new OllamaRequest(
+                    model, ollamaMessages, false, options.isEmpty() ? null : options));
+            long elapsed = System.currentTimeMillis() - start;
+            llmResult = new LlmResult(ollamaResp.message().content(),
+                    ollamaResp.prompt_eval_count(), ollamaResp.eval_count(), elapsed);
+        } else {
+            AnthropicRequest llmReq = new AnthropicRequest(
+                    model, props.getMaxTokens(), RAG_SYSTEM_PROMPT,
+                    null, null,
+                    List.of(new AnthropicRequest.Message("user", userMessage))
+            );
+            llmResult = anthropicClient.callApi(llmReq);
+        }
 
-        LlmResult llmResult = anthropicClient.callApi(llmReq);
         return new RagQueryResponse(
                 llmResult.text(),
                 buildCitations(results),

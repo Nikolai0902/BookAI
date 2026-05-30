@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -148,9 +149,14 @@ public class RagController {
      */
     @PostMapping("/eval/run")
     public EvalReport evalRun(
-            @RequestBody(required = false) RagQueryRequest request) throws IOException {
-        RagQueryRequest template = request != null ? request
-                : new RagQueryRequest(null, null, null, null, null, null);
+            @RequestBody(required = false) RagQueryRequest request,
+            @RequestParam(name = "useLocal", required = false) Boolean useLocalParam) throws IOException {
+        RagQueryRequest base = request != null ? request
+                : new RagQueryRequest(null, null, null, null, null, null, null);
+        Boolean effectiveUseLocal = useLocalParam != null ? useLocalParam : base.useLocal();
+        RagQueryRequest template = new RagQueryRequest(
+                base.question(), base.topK(), base.minScore(), base.rewriteQuery(),
+                base.strategy(), base.model(), effectiveUseLocal);
         return evalService.runEval(template);
     }
 }

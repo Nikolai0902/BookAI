@@ -11,7 +11,8 @@ import io.book.ai.rag.chunking.ChunkingStrategyType;
  * @param minScore     порог отсечения нерелевантных чанков (null → из конфига, 0 → без фильтра)
  * @param rewriteQuery переформулировать запрос через LLM перед поиском (null → false)
  * @param strategy     стратегия индекса для поиска (null → FIXED_SIZE)
- * @param model        модель LLM (null → из конфига)
+ * @param model        модель LLM (null → из конфига; для useLocal=true перебивает ollama.model)
+ * @param useLocal     true — генерация через локальную Ollama; false/null — через Anthropic
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RagQueryRequest(
@@ -20,5 +21,12 @@ public record RagQueryRequest(
         Float minScore,
         Boolean rewriteQuery,
         ChunkingStrategyType strategy,
-        String model
-) {}
+        String model,
+        Boolean useLocal
+) {
+    /** Конструктор без useLocal — для обратной совместимости. */
+    public RagQueryRequest(String question, Integer topK, Float minScore, Boolean rewriteQuery,
+                           ChunkingStrategyType strategy, String model) {
+        this(question, topK, minScore, rewriteQuery, strategy, model, null);
+    }
+}
